@@ -1,0 +1,16 @@
+{
+  "name": "plataforma-rad-c28",
+  "version": "1.0.0",
+  "description": "Plataforma web estatica para la Red de Activistas Digitales del Proyecto presidencial C28.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
