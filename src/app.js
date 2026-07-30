@@ -478,7 +478,7 @@ function createApp({ repository, config }) {
   );
   app.get("/", (_request, response) => {
     response.setHeader("Cache-Control", "no-store");
-    response.sendFile(path.join(staticRoot, "index.html"));
+    response.redirect(302, "/index.html");
   });
   app.use((_request, response) => {
     response.status(404).type("text/plain").send("Recurso no encontrado.");
