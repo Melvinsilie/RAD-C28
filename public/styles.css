@@ -296,8 +296,15 @@ button:disabled,
 input:disabled,
 select:disabled,
 textarea:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.65;
+}
+
+form.is-busy button:disabled,
+form.is-busy input:disabled,
+form.is-busy select:disabled,
+form.is-busy textarea:disabled {
+  cursor: wait;
 }
 
 .brand-copy h1,
@@ -648,7 +655,7 @@ textarea:disabled {
 }
 
 .content-shell.dashboard-mode {
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .content-bar {
@@ -685,6 +692,7 @@ textarea:disabled {
 .content-pills {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -697,6 +705,11 @@ textarea:disabled {
 }
 
 .content-shell.dashboard-mode .content-bar {
+  justify-content: flex-end;
+  padding: 12px 14px;
+}
+
+.content-shell.dashboard-mode .content-copy {
   display: none;
 }
 
@@ -866,6 +879,112 @@ textarea:disabled {
   color: var(--ink-soft);
 }
 
+.hero-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: auto;
+}
+
+.hero-insight-card {
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 176px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(21, 31, 49, 0.07);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at right top, rgba(15, 127, 123, 0.1), transparent 44%),
+    rgba(255, 255, 255, 0.66);
+  box-shadow: 0 12px 28px rgba(18, 27, 43, 0.07);
+}
+
+.hero-insight-sex {
+  background:
+    radial-gradient(circle at left bottom, rgba(223, 92, 153, 0.11), transparent 48%),
+    radial-gradient(circle at right top, rgba(47, 111, 215, 0.1), transparent 46%),
+    rgba(255, 255, 255, 0.68);
+}
+
+.hero-insight-reach {
+  background:
+    radial-gradient(circle at right top, rgba(229, 79, 61, 0.14), transparent 46%),
+    rgba(255, 255, 255, 0.68);
+}
+
+.hero-insight-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hero-insight-head .eyebrow {
+  margin: 0;
+}
+
+.hero-insight-head > span:not(.score-chip) {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.hero-insight-head .score-chip {
+  flex: 0 0 auto;
+  max-width: 100%;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.hero-insight-value {
+  display: block;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.hero-insight-progress {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(21, 31, 49, 0.08);
+}
+
+.hero-insight-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--secondary), #1ab7b1);
+}
+
+.hero-insight-card > small,
+.hero-insight-territory {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.hero-insight-territory {
+  padding-top: 10px;
+  border-top: 1px solid rgba(21, 31, 49, 0.08);
+  font-weight: 700;
+}
+
+.hero-insight-card .metric-sex-row {
+  gap: 8px;
+}
+
+.hero-insight-card .metric-sex-chip strong {
+  font-size: 1.45rem;
+}
+
 .hero-visual {
   display: grid;
   gap: 18px;
@@ -949,6 +1068,61 @@ textarea:disabled {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 14px;
+}
+
+.coordination-directory-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.coordination-directory-help {
+  max-width: 78ch;
+  margin: -4px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.coordination-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.coordination-directory-card {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 154px;
+  padding: 16px;
+  border: 1px solid rgba(21, 31, 49, 0.09);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.coordination-directory-card p {
+  margin: 0;
+  color: var(--red);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.coordination-directory-card strong {
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.coordination-directory-card span,
+.coordination-directory-card small {
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.coordination-directory-card.is-vacant {
+  border-style: dashed;
+  background: rgba(245, 239, 231, 0.55);
 }
 
 .metric-card {
@@ -1258,6 +1432,26 @@ textarea:disabled {
   font-size: 1.15rem;
 }
 
+.map-privacy-note {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(22, 38, 61, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.map-privacy-note strong {
+  color: var(--ink);
+}
+
+.map-privacy-note span {
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
 .legend-row {
   display: flex;
   flex-wrap: wrap;
@@ -1406,6 +1600,12 @@ textarea:disabled {
   border-radius: 18px;
   background: rgba(15, 127, 123, 0.06);
   outline: none;
+}
+
+.province-summary-trigger.is-own-territory {
+  border-radius: 18px;
+  background: rgba(34, 149, 106, 0.08);
+  box-shadow: inset 3px 0 rgba(34, 149, 106, 0.65);
 }
 
 .summary-row {
@@ -1717,14 +1917,72 @@ textarea:disabled {
   color: rgba(226, 235, 255, 0.78);
 }
 
+.planner-national-search {
+  display: grid;
+  gap: 7px;
+  max-width: 720px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.planner-national-search label {
+  color: #eef4ff;
+  font-size: 0.92rem;
+}
+
+.planner-national-search input {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.planner-national-search small {
+  min-height: 1.25em;
+  color: rgba(226, 235, 255, 0.76);
+}
+
 .planner-national-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
-.planner-national-field input {
+.planner-national-field input,
+.planner-national-field select {
   background: rgba(255, 255, 255, 0.88);
+}
+
+.planner-municipal-assignment {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(15, 127, 123, 0.07);
+  border: 1px solid rgba(15, 127, 123, 0.14);
+}
+
+.planner-municipal-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.planner-municipal-head span,
+.planner-municipal-assignment > small {
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.planner-municipal-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(190px, 1.4fr);
+  gap: 10px;
+}
+
+.planner-municipal-grid label {
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
 }
 
 .planner-role-guide {
@@ -2174,6 +2432,10 @@ tbody td {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .coordination-directory-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .dashboard-grid,
   .section-grid,
   .hero,
@@ -2198,6 +2460,7 @@ tbody td {
   .planner-goal-grid,
   .planner-coordinator-grid,
   .planner-national-grid,
+  .planner-municipal-grid,
   .planner-macro-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2317,8 +2580,20 @@ tbody td {
   }
 
   .content-shell.dashboard-mode .main-layout {
-    padding-top: 58px;
+    padding-top: 0;
     overflow: visible;
+  }
+
+  .content-shell.dashboard-mode .content-bar {
+    align-items: stretch;
+  }
+
+  .content-shell.dashboard-mode .content-pills {
+    width: 100%;
+  }
+
+  .content-shell.dashboard-mode .account-button {
+    flex: 1 1 140px;
   }
 
   .main-layout,
@@ -2336,7 +2611,9 @@ tbody td {
   }
 
   .metrics-grid,
+  .coordination-directory-grid,
   .signal-row,
+  .hero-insight-grid,
   .field-grid,
   .registration-grid .info-stack,
   .filter-bar,
@@ -2346,6 +2623,7 @@ tbody td {
   .planner-goal-grid,
   .planner-coordinator-grid,
   .planner-national-grid,
+  .planner-municipal-grid,
   .planner-macro-metrics {
     grid-template-columns: 1fr;
   }

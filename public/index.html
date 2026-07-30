@@ -8,7 +8,7 @@
       name="description"
       content="Centro de operaciones para el registro, la organización territorial y la capacidad de activación de RAD-C28."
     />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260730.7" />
   </head>
   <body>
     <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
@@ -54,8 +54,9 @@
           <button class="ghost-button" id="closeSelfRegistrationBtn" type="button">Cerrar</button>
         </div>
         <p>
-          Complete sus datos y territorio. Al ingresar solo podrá consultar los avances agregados
-          de esa provincia o seccional.
+          Complete sus datos y territorio. Al ingresar podrá comparar el avance agregado de las
+          provincias y consultar el directorio, las redes y el grupo de WhatsApp únicamente de su
+          propio territorio.
         </p>
 
         <section class="form-section">
@@ -67,14 +68,14 @@
             </label>
             <label>
               Contraseña
-              <input id="selfPassword" type="password" autocomplete="new-password" minlength="12" required />
+              <input id="selfPassword" type="password" autocomplete="new-password" minlength="6" required />
             </label>
             <label>
               Confirmar contraseña
-              <input id="selfConfirmPassword" type="password" autocomplete="new-password" minlength="12" required />
+              <input id="selfConfirmPassword" type="password" autocomplete="new-password" minlength="6" required />
             </label>
           </div>
-          <small>Use al menos 12 caracteres, mayúscula, minúscula, número y símbolo.</small>
+          <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
         </section>
 
         <section class="form-section">
@@ -121,7 +122,7 @@
             <label>
               Tipo de estructura
               <select id="selfTerritoryScope">
-                <option value="provincia">Territorio nacional</option>
+                <option value="provincia">Provincia de República Dominicana</option>
                 <option value="exterior">Seccional del exterior</option>
               </select>
             </label>
@@ -134,12 +135,12 @@
               <select id="selfExteriorSection"></select>
             </label>
             <label>
-              Municipio o ciudad
-              <input id="selfMunicipality" type="text" />
+              Municipio
+              <select id="selfMunicipality" required></select>
             </label>
             <label id="selfDistrictField">
               Distrito municipal
-              <input id="selfDistrict" type="text" />
+              <input id="selfDistrict" type="text" placeholder="Si aplica" />
             </label>
             <label id="selfExteriorDistrictField" class="hidden">
               Circunscripción exterior
@@ -169,13 +170,13 @@
         </label>
         <label>
           Contraseña nueva
-          <input id="newPassword" type="password" autocomplete="new-password" minlength="12" required />
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="6" required />
         </label>
         <label>
           Confirmar contraseña nueva
-          <input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" required />
+          <input id="confirmPassword" type="password" autocomplete="new-password" minlength="6" required />
         </label>
-        <small>Use al menos 12 caracteres, mayúscula, minúscula, número y símbolo.</small>
+        <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
         <p class="form-message" id="passwordMessage" role="alert"></p>
         <div class="form-actions">
           <button class="button button-primary" type="submit">Guardar contraseña</button>
@@ -192,13 +193,13 @@
         <input id="resetTargetUserId" type="hidden" />
         <label>
           Contraseña temporal
-          <input id="resetTemporaryPassword" type="password" autocomplete="new-password" minlength="12" required />
+          <input id="resetTemporaryPassword" type="password" autocomplete="new-password" minlength="6" required />
         </label>
         <label>
           Confirmar contraseña temporal
-          <input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="12" required />
+          <input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="6" required />
         </label>
-        <small>Use al menos 12 caracteres, mayúscula, minúscula, número y símbolo.</small>
+        <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
         <p class="form-message" id="resetPasswordMessage" role="alert"></p>
         <div class="form-actions">
           <button class="button button-primary" type="submit">Restablecer</button>
@@ -337,11 +338,17 @@
             </p>
 
             <div class="hero-actions">
-              <a class="button button-primary" href="#registro">Registrar activista</a>
-              <a class="button button-secondary" href="#base">Consultar registros</a>
+              <a class="button button-primary" id="heroPrimaryAction" href="#registro">Registrar activista</a>
+              <a class="button button-secondary" id="heroSecondaryAction" href="#base">Consultar registros</a>
             </div>
 
             <div class="signal-row" id="heroSignals"></div>
+            <div
+              class="hero-insight-grid"
+              id="heroInsights"
+              role="group"
+              aria-label="Indicadores territoriales destacados"
+            ></div>
           </div>
 
           <div class="hero-visual">
@@ -356,7 +363,7 @@
             <div class="hero-overlay">
               <span class="overlay-label">Centro de mando</span>
               <strong id="heroReach">0</strong>
-              <span class="overlay-subtitle">alcance potencial acumulado</span>
+              <span class="overlay-subtitle">alcance potencial nacional acumulado</span>
             </div>
 
             <div class="hero-float panel-soft">
@@ -365,6 +372,21 @@
               <small>listos para activar en 15 minutos o menos</small>
             </div>
           </div>
+        </section>
+
+        <section class="panel coordination-directory-panel" id="coordinationDirectoryPanel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Línea de coordinación</p>
+              <h3>Responsables de la estructura RAD-C28</h3>
+            </div>
+            <span class="status-pill">Designaciones vigentes</span>
+          </div>
+          <p class="coordination-directory-help">
+            Las personas designadas por la administración aparecen aquí con sus datos de contacto
+            para facilitar la coordinación operativa.
+          </p>
+          <div class="coordination-directory-grid" id="coordinationDirectory"></div>
         </section>
 
         <section class="metrics-grid" id="metricGrid" aria-label="Metricas principales"></section>
@@ -387,7 +409,7 @@
                 <h4>Selecciona una provincia</h4>
                 <p>
                   El color refleja cobertura territorial, estructura de
-                  coordinacion, induccion, inscripcion C28 y capacidad de
+                  coordinación, inducción, inscripción C28 y capacidad de
                   respuesta temprana.
                 </p>
               </aside>
@@ -528,7 +550,7 @@
                 <label>
                   Tipo de estructura
                   <select id="territoryScopeInput" name="territoryScope">
-                    <option value="provincia">Territorio nacional</option>
+                    <option value="provincia">Provincia de República Dominicana</option>
                     <option value="exterior">Seccional del exterior</option>
                   </select>
                 </label>
@@ -541,8 +563,8 @@
                   <select id="exteriorSectionInput" name="exteriorSection"></select>
                 </label>
                 <label>
-                  Municipio o ciudad base
-                  <input id="municipalityInput" name="municipality" type="text" placeholder="Municipio, ciudad o cabecera" />
+                  Municipio
+                  <select id="municipalityInput" name="municipality"></select>
                 </label>
                 <label id="districtField">
                   <span id="districtFieldLabel">Distrito Municipal</span>
@@ -553,24 +575,24 @@
                   <input id="exteriorDistrictInput" name="exteriorCircunscription" type="text" placeholder="Ej.: Circunscripción 1" />
                 </label>
                 <label>
-                  Zona o región
+                  Región
                   <input id="regionInput" name="region" type="text" readonly />
                 </label>
                 <label>
-                  Sistema territorial
+                  Macroregión operativa
                   <input id="macroRegionInput" name="macroRegion" type="text" readonly />
                 </label>
                 <label>
                   <span id="provCoordinatorLabel">Coordinador provincial</span>
-                  <input id="provCoordinatorInput" name="provincialCoordinator" type="text" />
+                  <input id="provCoordinatorInput" name="provincialCoordinator" type="text" readonly />
                 </label>
                 <label>
                   <span id="regionalCoordinatorLabel">Coordinador regional</span>
-                  <input id="regionalCoordinatorInput" name="regionalCoordinator" type="text" />
+                  <input id="regionalCoordinatorInput" name="regionalCoordinator" type="text" readonly />
                 </label>
                 <label>
                   <span id="macroCoordinatorLabel">Coordinador macroregional</span>
-                  <input id="macroCoordinatorInput" name="macroCoordinator" type="text" />
+                  <input id="macroCoordinatorInput" name="macroCoordinator" type="text" readonly />
                 </label>
               </div>
 
@@ -601,10 +623,10 @@
               <div class="field-grid">
                 <label class="toggle-field">
                   <input id="inductionInput" name="tookInduction" type="checkbox" />
-                  <span>Completo taller de induccion</span>
+                  <span>Completó el taller de inducción</span>
                 </label>
                 <label>
-                  Fecha de induccion
+                  Fecha de inducción
                   <input id="inductionDateInput" name="inductionDate" type="date" />
                 </label>
                 <label class="toggle-field">
@@ -832,9 +854,10 @@
                     </label>
                     <label>
                       Contraseña temporal
-                      <input id="userTemporaryPassword" type="password" autocomplete="new-password" required />
+                      <input id="userTemporaryPassword" type="password" autocomplete="new-password" minlength="6" required />
                     </label>
                   </div>
+                  <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
                   <p class="form-message" id="userFormMessage" role="alert"></p>
                   <button class="button button-primary" type="submit">Crear cuenta</button>
                 </form>
@@ -892,6 +915,6 @@
 
     <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=20260730.7"></script>
   </body>
 </html>

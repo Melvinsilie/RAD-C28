@@ -17,7 +17,16 @@ formación y el seguimiento de la capacidad operativa de RAD-C28.
 - Directorio territorial para activistas con nombres, municipio y redes del
   equipo, además del enlace al grupo de WhatsApp configurado para su territorio;
   los datos personales de contacto de los demás integrantes permanecen ocultos.
+- Mapa y clasificación nacional visibles para activistas mediante indicadores
+  agregados de las 32 provincias; la comparación no expone integrantes,
+  contactos, redes, coordinadores ni canales internos de territorios ajenos.
 - Metas provinciales, seccionales del exterior y coordinación nacional.
+- Catálogo dependiente de provincia con los 158 municipios de la división
+  territorial dominicana; la región y la macroregión se completan
+  automáticamente.
+- Designación administrativa de los cinco cargos nacionales desde las personas
+  registradas. Los activistas pueden consultar la línea de coordinación vigente
+  y los datos de contacto de quienes hayan sido formalmente designados.
 - Dashboard y mapa alimentados exclusivamente por MySQL/MariaDB.
 - Auditoría de accesos y operaciones críticas.
 - Base inicial sin activistas ni valores de demostración.
@@ -84,5 +93,8 @@ No utilice la base de producción para desarrollo cotidiano. Las migraciones en
 - Revoque el acceso remoto de desarrollo al finalizar.
 - No incluya datos personales en registros de prueba, capturas o incidencias.
 - Revise periódicamente cuentas y fichas creadas mediante el autorregistro.
+
+El catálogo municipal se contrastó con la
+[capa pública de municipios del Estado dominicano](https://mapageneral.mineria.gob.do/arcgis/rest/services/PortalMapa/Portal_AP/MapServer/5).
 
 Consulte [DEPLOYMENT.md](./DEPLOYMENT.md) para el despliegue en Hostinger.

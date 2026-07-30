@@ -1,5 +1,21 @@
 const crypto = require("node:crypto");
 
+const {
+  buildNationalReach,
+  buildProvinceProgress,
+  buildSexSummary,
+} = require("./territory-progress");
+const { MUNICIPALITIES_BY_PROVINCE } = require("./territorial-catalog");
+
+const NATIONAL_ASSIGNMENT_ROLES = {
+  nationalCoordinator: "Coordinador nacional",
+  deputyNationalCoordinator: "Subcoordinador nacional",
+  operationsCoordinator: "Coordinador nacional de operaciones digitales",
+  contentCoordinator: "Coordinador nacional de contenidos",
+  pollsCoordinator: "Coordinador nacional de sondeos",
+};
+const NATIONAL_ASSIGNMENT_KEYS = Object.keys(NATIONAL_ASSIGNMENT_ROLES);
+
 const ROLES = [
   "Activista",
   "Coordinador nacional",
@@ -116,13 +132,52 @@ function createPreviewRepository({ passwordHash }) {
     macroCoordinator: "",
     whatsappGroupUrl: "",
   }));
-  const nationalCoordination = {
-    nationalCoordinator: "",
-    deputyNationalCoordinator: "",
-    operationsCoordinator: "",
-    contentCoordinator: "",
-    pollsCoordinator: "",
-  };
+  const municipalityCoordinators = [];
+  const nationalCoordination = Object.fromEntries(
+    NATIONAL_ASSIGNMENT_KEYS.map((key) => [
+      key,
+      {
+        activistId: "",
+        fullName: "",
+        organizationalRole: "",
+        phone: "",
+        whatsapp: "",
+        email: "",
+        territoryScope: "",
+        territory: "",
+      },
+    ])
+  );
+
+  function currentNationalCoordination() {
+    return Object.fromEntries(
+      NATIONAL_ASSIGNMENT_KEYS.map((key) => {
+        const current = nationalCoordination[key] || {};
+        const record = records.find((item) => item.id === current.activistId);
+        return [
+          key,
+          record
+            ? {
+                activistId: record.id,
+                fullName: `${record.firstName} ${record.lastName}`.trim(),
+                organizationalRole: NATIONAL_ASSIGNMENT_ROLES[key],
+                phone: record.phone,
+                whatsapp: record.whatsapp,
+                email: record.email,
+                territoryScope: record.territoryScope,
+                territory:
+                  record.territoryScope === "exterior"
+                    ? record.exteriorSection
+                    : record.province,
+              }
+            : {
+                ...current,
+                activistId: current.activistId || "",
+              },
+        ];
+      })
+    );
+  }
 
   const publicUser = (row) => ({
     id: row.id,
@@ -183,19 +238,27 @@ function createPreviewRepository({ passwordHash }) {
           zone,
           macroRegion,
         })),
+        municipalitiesByProvince: MUNICIPALITIES_BY_PROVINCE,
       };
     },
     async loadState(viewer = null) {
       const snapshot = {
-        nationalCoordination,
+        nationalCoordination: currentNationalCoordination(),
+        nationalReach: buildNationalReach(records),
         provincePlans,
         exteriorPlans,
+        municipalityCoordinators,
         records,
-        catalogs: { organizationalRoles: ROLES, skills: SKILLS },
+        catalogs: {
+          organizationalRoles: ROLES,
+          skills: SKILLS,
+          municipalitiesByProvince: MUNICIPALITIES_BY_PROVINCE,
+        },
       };
       if (viewer?.access_role !== "activist") return structuredClone(snapshot);
       const ownRecord = records.find((record) => record.userId === viewer.id);
       if (!ownRecord) throw Object.assign(new Error("Ficha no vinculada."), { status: 403 });
+      const territoryProgress = buildProvinceProgress(provincePlans, records);
       const sameTerritory = records.filter((record) =>
         ownRecord.territoryScope === "exterior"
           ? record.territoryScope === "exterior" &&
@@ -213,18 +276,44 @@ function createPreviewRepository({ passwordHash }) {
         notes: "",
         networks: record.networks,
       }));
+      const visibleProvincePlans = provincePlans.map((plan) => {
+        const ownProvince =
+          ownRecord.territoryScope === "provincia" && plan.province === ownRecord.province;
+        return {
+          province: plan.province,
+          region: plan.region,
+          macroRegion: plan.macroRegion,
+          plannedCells: plan.plannedCells,
+          unitGoal: plan.unitGoal,
+          provincialGoal: plan.provincialGoal,
+          provincialCoordinator: ownProvince ? plan.provincialCoordinator : "",
+          regionalCoordinator: ownProvince ? plan.regionalCoordinator : "",
+          macroCoordinator: ownProvince ? plan.macroCoordinator : "",
+          whatsappGroupUrl: ownProvince ? plan.whatsappGroupUrl : "",
+        };
+      });
       return structuredClone({
-        nationalCoordination: {},
-        provincePlans:
-          ownRecord.territoryScope === "provincia"
-            ? provincePlans.filter((plan) => plan.province === ownRecord.province)
-            : [],
+        nationalCoordination: snapshot.nationalCoordination,
+        nationalReach: snapshot.nationalReach,
+        provincePlans: visibleProvincePlans,
         exteriorPlans:
           ownRecord.territoryScope === "exterior"
             ? exteriorPlans.filter((plan) => plan.seccional === ownRecord.exteriorSection)
             : [],
+        municipalityCoordinators:
+          ownRecord.territoryScope === "provincia"
+            ? municipalityCoordinators.filter(
+                (assignment) =>
+                  assignment.province === ownRecord.province &&
+                  assignment.municipality === ownRecord.municipality
+              )
+            : [],
         records: anonymized,
         ownRecord,
+        ownTerritoryInsights: {
+          sex: buildSexSummary(sameTerritory),
+        },
+        territoryProgress,
         catalogs: snapshot.catalogs,
         viewMode: "territory",
       });
@@ -238,22 +327,36 @@ function createPreviewRepository({ passwordHash }) {
       const protectedValues =
         options.selfService && existingIndex >= 0
           ? {
+              territoryScope: records[existingIndex].territoryScope,
+              province: records[existingIndex].province,
+              exteriorSection: records[existingIndex].exteriorSection,
               status: records[existingIndex].status,
               role: records[existingIndex].role,
               provincialCoordinator: records[existingIndex].provincialCoordinator,
               regionalCoordinator: records[existingIndex].regionalCoordinator,
               macroCoordinator: records[existingIndex].macroCoordinator,
-              tookInduction: records[existingIndex].tookInduction,
-              inductionDate: records[existingIndex].inductionDate,
-              c28Registered: records[existingIndex].c28Registered,
             }
           : {};
       if (options.selfService && records[existingIndex]?.userId !== actorId) {
         throw Object.assign(new Error("Solo puede actualizar su propia ficha."), { status: 403 });
       }
+      const effectivePayload = { ...payload, ...protectedValues };
+      const territory =
+        effectivePayload.territoryScope === "exterior"
+          ? exteriorPlans.find(
+              (plan) => plan.seccional === effectivePayload.exteriorSection
+            )
+          : provincePlans.find((plan) => plan.province === effectivePayload.province);
       const record = {
-        ...payload,
-        ...protectedValues,
+        ...effectivePayload,
+        region:
+          effectivePayload.territoryScope === "exterior"
+            ? territory?.zone || ""
+            : territory?.region || "",
+        macroRegion: territory?.macroRegion || "",
+        provincialCoordinator: territory?.provincialCoordinator || "",
+        regionalCoordinator: territory?.regionalCoordinator || "",
+        macroCoordinator: territory?.macroCoordinator || "",
         id,
         userId: existingIndex >= 0 ? records[existingIndex].userId : null,
         createdAt: existingIndex >= 0 ? records[existingIndex].createdAt : now,
@@ -279,8 +382,91 @@ function createPreviewRepository({ passwordHash }) {
       if (!plan) throw Object.assign(new Error("Seccional no encontrada."), { status: 404 });
       Object.assign(plan, payload);
     },
+    async updateMunicipalityCoordinator(province, municipality, coordinatorName) {
+      const index = municipalityCoordinators.findIndex(
+        (assignment) =>
+          assignment.province === province && assignment.municipality === municipality
+      );
+      if (!coordinatorName) {
+        if (index >= 0) municipalityCoordinators.splice(index, 1);
+        return;
+      }
+      const assignment = { province, municipality, coordinatorName };
+      if (index >= 0) municipalityCoordinators[index] = assignment;
+      else municipalityCoordinators.push(assignment);
+    },
     async updateCoordination(payload) {
-      Object.assign(nationalCoordination, payload);
+      const requestedIds = NATIONAL_ASSIGNMENT_KEYS.map(
+        (key) => payload[key]?.activistId || ""
+      ).filter(Boolean);
+      if (new Set(requestedIds).size !== requestedIds.length) {
+        throw Object.assign(
+          new Error("Una persona solo puede ocupar un cargo nacional a la vez."),
+          { status: 400 }
+        );
+      }
+      const previousIds = NATIONAL_ASSIGNMENT_KEYS.map(
+        (key) => nationalCoordination[key]?.activistId
+      ).filter(Boolean);
+      for (const key of NATIONAL_ASSIGNMENT_KEYS) {
+        const activistId = payload[key]?.activistId || "";
+        const record = records.find((item) => item.id === activistId);
+        if (activistId && !record) {
+          throw Object.assign(
+            new Error("Una de las personas seleccionadas ya no está disponible."),
+            { status: 400 }
+          );
+        }
+        nationalCoordination[key] = record
+          ? {
+              activistId: record.id,
+              fullName: `${record.firstName} ${record.lastName}`.trim(),
+              organizationalRole: NATIONAL_ASSIGNMENT_ROLES[key],
+              phone: record.phone,
+              whatsapp: record.whatsapp,
+              email: record.email,
+              territoryScope: record.territoryScope,
+              territory:
+                record.territoryScope === "exterior"
+                  ? record.exteriorSection
+                  : record.province,
+            }
+          : {
+              activistId: "",
+              fullName: "",
+              organizationalRole: "",
+              phone: "",
+              whatsapp: "",
+              email: "",
+              territoryScope: "",
+              territory: "",
+            };
+        if (record) {
+          record.role = NATIONAL_ASSIGNMENT_ROLES[key];
+          const user = users.find((item) => item.id === record.userId);
+          if (user) user.organizational_role = NATIONAL_ASSIGNMENT_ROLES[key];
+        }
+      }
+      previousIds
+        .filter((id) => !requestedIds.includes(id))
+        .forEach((id) => {
+          const record = records.find((item) => item.id === id);
+          if (
+            record &&
+            Object.values(NATIONAL_ASSIGNMENT_ROLES).includes(record.role)
+          ) {
+            record.role = "Activista";
+            const user = users.find((item) => item.id === record.userId);
+            if (
+              user &&
+              Object.values(NATIONAL_ASSIGNMENT_ROLES).includes(
+                user.organizational_role
+              )
+            ) {
+              user.organizational_role = "Activista";
+            }
+          }
+        });
     },
     async audit(userId, action, entityType, entityId) {
       const user = users.find((item) => item.id === userId);
@@ -347,8 +533,26 @@ function createPreviewRepository({ passwordHash }) {
         created_at: new Date(),
       };
       const now = new Date().toISOString();
+      const territory =
+        input.activist.territoryScope === "exterior"
+          ? exteriorPlans.find(
+              (plan) => plan.seccional === input.activist.exteriorSection
+            )
+          : provincePlans.find((plan) => plan.province === input.activist.province);
       records.unshift({
         ...input.activist,
+        municipality:
+          input.activist.territoryScope === "exterior"
+            ? input.activist.municipality || input.activist.exteriorSection
+            : input.activist.municipality,
+        region:
+          input.activist.territoryScope === "exterior"
+            ? territory?.zone || ""
+            : territory?.region || "",
+        macroRegion: territory?.macroRegion || "",
+        provincialCoordinator: territory?.provincialCoordinator || "",
+        regionalCoordinator: territory?.regionalCoordinator || "",
+        macroCoordinator: territory?.macroCoordinator || "",
         id: activistId,
         userId,
         createdAt: now,

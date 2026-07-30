@@ -13,6 +13,7 @@ const {
   validateActivist,
   validateProvincePlan,
   validateExteriorPlan,
+  validateMunicipalityCoordinator,
   badRequest,
 } = require("./validation");
 
@@ -56,6 +57,7 @@ function createApp({ repository, config }) {
   const registrationLimiter = rateLimit({
     windowMs: 60 * 60_000,
     limit: 10,
+    skip: () => config.env !== "production",
     standardHeaders: "draft-8",
     legacyHeaders: false,
     message: { error: "Se alcanzo el limite temporal de registros desde esta conexion." },
@@ -314,16 +316,48 @@ function createApp({ repository, config }) {
   );
 
   app.put(
-    "/api/coordination",
-    requireStaff,
+    "/api/plans/municipalities/:province/:municipality",
+    requireAdmin,
     asyncRoute(async (request, response) => {
-      const payload = {
-        nationalCoordinator: cleanText(request.body?.nationalCoordinator, 160),
-        deputyNationalCoordinator: cleanText(request.body?.deputyNationalCoordinator, 160),
-        operationsCoordinator: cleanText(request.body?.operationsCoordinator, 160),
-        contentCoordinator: cleanText(request.body?.contentCoordinator, 160),
-        pollsCoordinator: cleanText(request.body?.pollsCoordinator, 160),
-      };
+      const assignment = validateMunicipalityCoordinator(
+        decodeURIComponent(request.params.province),
+        decodeURIComponent(request.params.municipality),
+        request.body
+      );
+      await repository.updateMunicipalityCoordinator(
+        assignment.province,
+        assignment.municipality,
+        assignment.coordinatorName,
+        request.user.id
+      );
+      await repository.audit(
+        request.user.id,
+        "update",
+        "municipality_coordinator",
+        `${assignment.province}/${assignment.municipality}`,
+        { assigned: Boolean(assignment.coordinatorName) },
+        request
+      );
+      response.json({ ok: true });
+    })
+  );
+
+  app.put(
+    "/api/coordination",
+    requireAdmin,
+    asyncRoute(async (request, response) => {
+      const payload = Object.fromEntries(
+        [
+          "nationalCoordinator",
+          "deputyNationalCoordinator",
+          "operationsCoordinator",
+          "contentCoordinator",
+          "pollsCoordinator",
+        ].map((key) => [
+          key,
+          { activistId: cleanText(request.body?.[key]?.activistId, 36) },
+        ])
+      );
       await repository.updateCoordination(payload);
       await repository.audit(request.user.id, "update", "national_coordination", "1", null, request);
       response.json({ ok: true });

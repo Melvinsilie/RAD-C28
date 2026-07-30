@@ -1,5 +1,24 @@
 const crypto = require("node:crypto");
 
+const {
+  buildNationalReach,
+  buildProvinceProgress,
+  buildSexSummary,
+} = require("./territory-progress");
+const { MUNICIPALITIES_BY_PROVINCE } = require("./territorial-catalog");
+
+const NATIONAL_ASSIGNMENTS = [
+  ["nationalCoordinator", "national_coordinator", "Coordinador nacional"],
+  ["deputyNationalCoordinator", "deputy_national_coordinator", "Subcoordinador nacional"],
+  [
+    "operationsCoordinator",
+    "operations_coordinator",
+    "Coordinador nacional de operaciones digitales",
+  ],
+  ["contentCoordinator", "content_coordinator", "Coordinador nacional de contenidos"],
+  ["pollsCoordinator", "polls_coordinator", "Coordinador nacional de sondeos"],
+];
+
 function createRepository(pool, fields) {
   const asDate = (value) => (value ? new Date(value).toISOString() : null);
   const asDateOnly = (value) => {
@@ -94,6 +113,42 @@ function createRepository(pool, fields) {
     };
   }
 
+  function mapNationalCoordination(coordination, records) {
+    return Object.fromEntries(
+      NATIONAL_ASSIGNMENTS.map(([key, column, assignedRole]) => {
+        const activistId = coordination[`${column}_activist_id`] || "";
+        const record = records.find((item) => item.id === activistId);
+        return [
+          key,
+          record
+            ? {
+                activistId: record.id,
+                fullName: `${record.firstName} ${record.lastName}`.trim(),
+                organizationalRole: assignedRole,
+                phone: record.phone,
+                whatsapp: record.whatsapp,
+                email: record.email,
+                territoryScope: record.territoryScope,
+                territory:
+                  record.territoryScope === "exterior"
+                    ? record.exteriorSection
+                    : record.province,
+              }
+            : {
+                activistId: "",
+                fullName: coordination[column] || "",
+                organizationalRole: "",
+                phone: "",
+                whatsapp: "",
+                email: "",
+                territoryScope: "",
+                territory: "",
+              },
+        ];
+      })
+    );
+  }
+
   async function roleId(connection, name) {
     const [rows] = await connection.query(
       "SELECT id FROM organizational_roles WHERE name = ? LIMIT 1",
@@ -108,6 +163,7 @@ function createRepository(pool, fields) {
       [provinceRows],
       [exteriorRows],
       [coordinationRows],
+      [municipalityCoordinatorRows],
       [activistRows],
       [networkRows],
       [skillRows],
@@ -117,6 +173,11 @@ function createRepository(pool, fields) {
       pool.query("SELECT * FROM province_plans ORDER BY province"),
       pool.query("SELECT * FROM exterior_plans ORDER BY seccional"),
       pool.query("SELECT * FROM national_coordination WHERE singleton_id = 1"),
+      pool.query(`
+        SELECT province, municipality, coordinator_name
+        FROM municipality_coordinators
+        ORDER BY province, municipality
+      `),
       pool.query(`
         SELECT a.*, r.name AS organizational_role
         FROM activists a
@@ -155,19 +216,20 @@ function createRepository(pool, fields) {
       mapActivist(row, networksByActivist, skillsByActivist)
     );
     const snapshot = {
-      nationalCoordination: {
-        nationalCoordinator: coordination.national_coordinator || "",
-        deputyNationalCoordinator: coordination.deputy_national_coordinator || "",
-        operationsCoordinator: coordination.operations_coordinator || "",
-        contentCoordinator: coordination.content_coordinator || "",
-        pollsCoordinator: coordination.polls_coordinator || "",
-      },
+      nationalCoordination: mapNationalCoordination(coordination, mappedRecords),
+      nationalReach: buildNationalReach(mappedRecords),
       provincePlans: provinceRows.map(mapProvince),
       exteriorPlans: exteriorRows.map(mapExterior),
+      municipalityCoordinators: municipalityCoordinatorRows.map((row) => ({
+        province: row.province,
+        municipality: row.municipality,
+        coordinatorName: row.coordinator_name,
+      })),
       records: mappedRecords,
       catalogs: {
         organizationalRoles: roleRows.map((row) => row.name),
         skills: catalogSkillRows.map((row) => row.name),
+        municipalitiesByProvince: MUNICIPALITIES_BY_PROVINCE,
       },
     };
 
@@ -180,11 +242,18 @@ function createRepository(pool, fields) {
       });
     }
     const ownRecord = mapActivist(ownRow, networksByActivist, skillsByActivist);
+    const territoryProgress = buildProvinceProgress(
+      snapshot.provincePlans,
+      snapshot.records
+    );
     const sameTerritory = (row) =>
       ownRow.territory_scope === "exterior"
         ? row.territory_scope === "exterior" &&
           row.exterior_section === ownRow.exterior_section
         : row.territory_scope === "provincia" && row.province === ownRow.province;
+    const ownTerritoryRecords = activistRows
+      .filter(sameTerritory)
+      .map((row) => mapActivist(row, networksByActivist, skillsByActivist));
     const territoryRecords = activistRows.filter(sameTerritory).map((row) => {
       const record = mapActivist(row, networksByActivist, skillsByActivist);
       return {
@@ -233,18 +302,45 @@ function createRepository(pool, fields) {
       };
     });
 
+    const provincePlans = snapshot.provincePlans.map((plan) => {
+      const ownProvince =
+        ownRow.territory_scope === "provincia" && plan.province === ownRow.province;
+      return {
+        province: plan.province,
+        region: plan.region,
+        macroRegion: plan.macroRegion,
+        plannedCells: plan.plannedCells,
+        unitGoal: plan.unitGoal,
+        provincialGoal: plan.provincialGoal,
+        provincialCoordinator: ownProvince ? plan.provincialCoordinator : "",
+        regionalCoordinator: ownProvince ? plan.regionalCoordinator : "",
+        macroCoordinator: ownProvince ? plan.macroCoordinator : "",
+        whatsappGroupUrl: ownProvince ? plan.whatsappGroupUrl : "",
+      };
+    });
+
     return {
-      nationalCoordination: {},
-      provincePlans:
-        ownRow.territory_scope === "provincia"
-          ? snapshot.provincePlans.filter((plan) => plan.province === ownRow.province)
-          : [],
+      nationalCoordination: snapshot.nationalCoordination,
+      nationalReach: snapshot.nationalReach,
+      provincePlans,
       exteriorPlans:
         ownRow.territory_scope === "exterior"
           ? snapshot.exteriorPlans.filter((plan) => plan.seccional === ownRow.exterior_section)
           : [],
+      municipalityCoordinators:
+        ownRow.territory_scope === "provincia"
+          ? snapshot.municipalityCoordinators.filter(
+              (assignment) =>
+                assignment.province === ownRow.province &&
+                assignment.municipality === ownRow.municipality
+            )
+          : [],
       records: territoryRecords,
       ownRecord,
+      ownTerritoryInsights: {
+        sex: buildSexSummary(ownTerritoryRecords),
+      },
+      territoryProgress,
       catalogs: snapshot.catalogs,
       viewMode: "territory",
     };
@@ -270,6 +366,7 @@ function createRepository(pool, fields) {
         zone: row.zone_name,
         macroRegion: row.macro_region,
       })),
+      municipalitiesByProvince: MUNICIPALITIES_BY_PROVINCE,
     };
   }
 
@@ -292,25 +389,29 @@ function createRepository(pool, fields) {
         const current = currentRows[0];
         payload = {
           ...payload,
+          territoryScope: current.territory_scope,
+          province: current.province || "",
+          exteriorSection: current.exterior_section || "",
           status: current.status_name,
           role: current.organizational_role || "Activista",
           provincialCoordinator: current.provincial_coordinator,
           regionalCoordinator: current.regional_coordinator,
           macroCoordinator: current.macro_coordinator,
-          tookInduction: Boolean(current.took_induction),
-          inductionDate: asDateOnly(current.induction_date),
-          c28Registered: Boolean(current.c28_registered),
         };
       }
       const organizationalRoleId = await roleId(connection, payload.role);
       const [territoryRows] =
         payload.territoryScope === "exterior"
           ? await connection.query(
-              "SELECT zone_name AS region_name, macro_region FROM exterior_plans WHERE seccional = ? LIMIT 1",
+              `SELECT zone_name AS region_name, macro_region, provincial_coordinator,
+                      regional_coordinator, macro_coordinator
+               FROM exterior_plans WHERE seccional = ? LIMIT 1`,
               [payload.exteriorSection]
             )
           : await connection.query(
-              "SELECT region_name, macro_region FROM province_plans WHERE province = ? LIMIT 1",
+              `SELECT region_name, macro_region, provincial_coordinator,
+                      regional_coordinator, macro_coordinator
+               FROM province_plans WHERE province = ? LIMIT 1`,
               [payload.province]
             );
       if (!territoryRows.length) {
@@ -339,9 +440,9 @@ function createRepository(pool, fields) {
         region: territory.region_name,
         macroRegion: territory.macro_region,
         organizationalRoleId,
-        provincialCoordinator: payload.provincialCoordinator || "",
-        regionalCoordinator: payload.regionalCoordinator || "",
-        macroCoordinator: payload.macroCoordinator || "",
+        provincialCoordinator: territory.provincial_coordinator || "",
+        regionalCoordinator: territory.regional_coordinator || "",
+        macroCoordinator: territory.macro_coordinator || "",
         tookInduction: Boolean(payload.tookInduction),
         inductionDate: payload.tookInduction && payload.inductionDate ? payload.inductionDate : null,
         c28Registered: Boolean(payload.c28Registered),
@@ -481,20 +582,153 @@ function createRepository(pool, fields) {
     if (!result.affectedRows) throw Object.assign(new Error("Seccional no encontrada."), { status: 404 });
   }
 
-  async function updateCoordination(payload) {
+  async function updateMunicipalityCoordinator(
+    province,
+    municipality,
+    coordinatorName,
+    actorId = null
+  ) {
+    if (!coordinatorName) {
+      await pool.execute(
+        "DELETE FROM municipality_coordinators WHERE province=? AND municipality=?",
+        [province, municipality]
+      );
+      return;
+    }
     await pool.execute(
-      `UPDATE national_coordination SET
-         national_coordinator=?, deputy_national_coordinator=?, operations_coordinator=?,
-         content_coordinator=?, polls_coordinator=?
-       WHERE singleton_id=1`,
-      [
-        payload.nationalCoordinator || "",
-        payload.deputyNationalCoordinator || "",
-        payload.operationsCoordinator || "",
-        payload.contentCoordinator || "",
-        payload.pollsCoordinator || "",
-      ]
+      `INSERT INTO municipality_coordinators
+         (province, municipality, coordinator_name, updated_by)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         coordinator_name=VALUES(coordinator_name),
+         updated_by=VALUES(updated_by)`,
+      [province, municipality, coordinatorName, actorId]
     );
+  }
+
+  async function updateCoordination(payload) {
+    const requestedIds = NATIONAL_ASSIGNMENTS.map(
+      ([key]) => payload[key]?.activistId || ""
+    ).filter(Boolean);
+    const selectedIds = [...new Set(requestedIds)];
+    if (selectedIds.length !== requestedIds.length) {
+      throw Object.assign(
+        new Error("Una persona solo puede ocupar un cargo nacional a la vez."),
+        { status: 400 }
+      );
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [currentRows] = await connection.query(
+        "SELECT * FROM national_coordination WHERE singleton_id=1 FOR UPDATE"
+      );
+      let recordsById = new Map();
+      if (selectedIds.length) {
+        const placeholders = selectedIds.map(() => "?").join(",");
+        const [rows] = await connection.query(
+          `SELECT id, first_name, last_name
+           FROM activists
+           WHERE id IN (${placeholders})`,
+          selectedIds
+        );
+        recordsById = new Map(rows.map((row) => [row.id, row]));
+        if (recordsById.size !== selectedIds.length) {
+          throw Object.assign(
+            new Error("Una de las personas seleccionadas ya no está disponible."),
+            { status: 400 }
+          );
+        }
+      }
+
+      const values = NATIONAL_ASSIGNMENTS.flatMap(([key]) => {
+        const activistId = payload[key]?.activistId || null;
+        const record = activistId ? recordsById.get(activistId) : null;
+        return [
+          record ? `${record.first_name} ${record.last_name}`.trim() : "",
+          activistId,
+        ];
+      });
+      await connection.execute(
+        `UPDATE national_coordination SET
+           national_coordinator=?, national_coordinator_activist_id=?,
+           deputy_national_coordinator=?, deputy_national_coordinator_activist_id=?,
+           operations_coordinator=?, operations_coordinator_activist_id=?,
+           content_coordinator=?, content_coordinator_activist_id=?,
+           polls_coordinator=?, polls_coordinator_activist_id=?
+         WHERE singleton_id=1`,
+        values
+      );
+
+      for (const [key, , assignedRole] of NATIONAL_ASSIGNMENTS) {
+        const activistId = payload[key]?.activistId;
+        if (!activistId) continue;
+        await connection.execute(
+          `UPDATE activists AS a
+           INNER JOIN organizational_roles AS r ON r.name=?
+           SET a.organizational_role_id=r.id
+           WHERE a.id=?`,
+          [assignedRole, activistId]
+        );
+        await connection.execute(
+          `UPDATE users AS u
+           INNER JOIN activists AS a ON a.user_id=u.id
+           INNER JOIN organizational_roles AS r ON r.name=?
+           SET u.organizational_role_id=r.id
+           WHERE a.id=?`,
+          [assignedRole, activistId]
+        );
+      }
+
+      const current = currentRows[0] || {};
+      const previousIds = NATIONAL_ASSIGNMENTS.map(
+        ([, column]) => current[`${column}_activist_id`]
+      ).filter(Boolean);
+      const removedIds = [
+        ...new Set(previousIds.filter((id) => !selectedIds.includes(id))),
+      ];
+      if (removedIds.length) {
+        const idPlaceholders = removedIds.map(() => "?").join(",");
+        const rolePlaceholders = NATIONAL_ASSIGNMENTS.map(() => "?").join(",");
+        await connection.query(
+          `UPDATE users AS u
+           INNER JOIN activists AS a ON a.user_id=u.id
+           INNER JOIN organizational_roles AS current_role
+             ON current_role.id=u.organizational_role_id
+           INNER JOIN organizational_roles AS default_role
+             ON default_role.name='Activista'
+           SET u.organizational_role_id=default_role.id
+           WHERE a.id IN (${idPlaceholders})
+             AND current_role.name IN (${rolePlaceholders})`,
+          [
+            ...removedIds,
+            ...NATIONAL_ASSIGNMENTS.map(([, , assignedRole]) => assignedRole),
+          ]
+        );
+        await connection.query(
+          `UPDATE activists AS a
+           INNER JOIN organizational_roles AS current_role
+             ON current_role.id=a.organizational_role_id
+           INNER JOIN organizational_roles AS default_role
+             ON default_role.name='Activista'
+           SET a.organizational_role_id=default_role.id
+           WHERE a.id IN (${idPlaceholders})
+             AND current_role.name IN (${rolePlaceholders})`,
+          [
+            ...removedIds,
+            ...NATIONAL_ASSIGNMENTS.map(([, , assignedRole]) => assignedRole),
+          ]
+        );
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async function findUserByUsername(username) {
@@ -804,6 +1038,7 @@ function createRepository(pool, fields) {
     deleteActivist,
     updateProvince,
     updateExterior,
+    updateMunicipalityCoordinator,
     updateCoordination,
     findUserByUsername,
     findUserById,

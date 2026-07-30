@@ -1,3 +1,5 @@
+const { municipalitiesForProvince } = require("./territorial-catalog");
+
 const STATUS_OPTIONS = new Set([
   "Activo",
   "En inducción",
@@ -28,14 +30,14 @@ function validateUsername(value) {
 function validatePassword(value) {
   const password = String(value ?? "");
   if (
-    password.length < 12 ||
+    password.length < 6 ||
     !/[a-z]/.test(password) ||
     !/[A-Z]/.test(password) ||
     !/\d/.test(password) ||
     !/[^A-Za-z0-9]/.test(password)
   ) {
     throw badRequest(
-      "La contraseña debe tener al menos 12 caracteres, mayuscula, minuscula, numero y simbolo."
+      "La contraseña debe tener al menos 6 caracteres, mayuscula, minuscula, numero y simbolo."
     );
   }
   return password;
@@ -92,8 +94,16 @@ function validateActivist(body) {
   const territoryScope = oneOf(cleanText(body.territoryScope, 20), TERRITORY_SCOPES, "El territorio");
   const province = cleanText(body.province, 100);
   const exteriorSection = cleanText(body.exteriorSection, 100);
+  const municipality = cleanText(body.municipality, 120);
   if (territoryScope === "provincia" && !province) throw badRequest("Seleccione una provincia.");
   if (territoryScope === "exterior" && !exteriorSection) throw badRequest("Seleccione una seccional.");
+  if (
+    territoryScope === "provincia" &&
+    municipality &&
+    !municipalitiesForProvince(province).includes(municipality)
+  ) {
+    throw badRequest("El municipio no corresponde a la provincia seleccionada.");
+  }
 
   const firstName = cleanText(body.firstName, 100);
   const lastName = cleanText(body.lastName, 100);
@@ -113,6 +123,12 @@ function validateActivist(body) {
     };
   }
 
+  const tookInduction = Boolean(body.tookInduction);
+  const inductionDate = cleanText(body.inductionDate, 10);
+  if (tookInduction && !/^\d{4}-\d{2}-\d{2}$/.test(inductionDate)) {
+    throw badRequest("Indique la fecha en que se completó la inducción.");
+  }
+
   return {
     cedula: normalizeCedula(body.cedula),
     firstName,
@@ -127,7 +143,7 @@ function validateActivist(body) {
     province,
     exteriorSection,
     exteriorCircunscription: cleanText(body.exteriorCircunscription, 120),
-    municipality: cleanText(body.municipality, 120),
+    municipality,
     districtMunicipal: cleanText(body.districtMunicipal, 120),
     region: cleanText(body.region, 100),
     macroRegion: cleanText(body.macroRegion, 100),
@@ -135,8 +151,8 @@ function validateActivist(body) {
     provincialCoordinator: cleanText(body.provincialCoordinator, 160),
     regionalCoordinator: cleanText(body.regionalCoordinator, 160),
     macroCoordinator: cleanText(body.macroCoordinator, 160),
-    tookInduction: Boolean(body.tookInduction),
-    inductionDate: cleanText(body.inductionDate, 10),
+    tookInduction,
+    inductionDate: tookInduction ? inductionDate : "",
     c28Registered: Boolean(body.c28Registered),
     responseWindow: oneOf(
       cleanText(body.responseWindow, 30),
@@ -175,6 +191,19 @@ function validateExteriorPlan(body) {
   };
 }
 
+function validateMunicipalityCoordinator(provinceValue, municipalityValue, body) {
+  const province = cleanText(provinceValue, 100);
+  const municipality = cleanText(municipalityValue, 120);
+  if (!municipalitiesForProvince(province).includes(municipality)) {
+    throw badRequest("El municipio no corresponde a la provincia seleccionada.");
+  }
+  return {
+    province,
+    municipality,
+    coordinatorName: cleanText(body?.coordinatorName, 160),
+  };
+}
+
 function badRequest(message) {
   return Object.assign(new Error(message), { status: 400 });
 }
@@ -187,6 +216,7 @@ module.exports = {
   validateActivist,
   validateProvincePlan,
   validateExteriorPlan,
+  validateMunicipalityCoordinator,
   isValidDominicanCedula,
   badRequest,
 };

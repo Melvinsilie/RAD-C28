@@ -32,19 +32,40 @@ const MAP_LABEL_OVERRIDES = {
   "Monseñor Nouel": { label: "M. Nouel", fontSize: 8.2 },
   "San Pedro de Macorís": { label: "S.P. de Macorís", fontSize: 7.7 },
 };
+const NATIONAL_COORDINATION_FIELDS = [
+  ["nationalCoordinator", "Coordinador nacional general"],
+  ["deputyNationalCoordinator", "Subcoordinador nacional"],
+  ["operationsCoordinator", "Responsable de operaciones digitales"],
+  ["contentCoordinator", "Responsable de contenidos"],
+  ["pollsCoordinator", "Responsable de sondeos"],
+];
 
 const state = {
   currentUser: null,
   nationalCoordination: {},
+  municipalityCoordinators: [],
+  nationalReach: null,
   provincePlans: [],
   exteriorPlans: [],
   records: [],
-  catalogs: { organizationalRoles: [], skills: [] },
+  territoryProgress: [],
+  ownTerritoryInsights: {
+    sex: null,
+  },
+  catalogs: {
+    organizationalRoles: [],
+    skills: [],
+    municipalitiesByProvince: {},
+  },
   users: [],
   audits: [],
   ownRecord: null,
   viewMode: "national",
-  publicCatalogs: { provinces: [], exteriorSections: [] },
+  publicCatalogs: {
+    provinces: [],
+    exteriorSections: [],
+    municipalitiesByProvince: {},
+  },
 };
 
 const nodes = Object.fromEntries(
@@ -110,12 +131,15 @@ const nodes = Object.fromEntries(
     "moduleContextPill",
     "dashboard",
     "heroSignals",
+    "heroInsights",
     "heroReach",
     "heroResponse",
     "metricGrid",
     "pulseList",
     "funnelGrid",
     "provinceSummaryTable",
+    "coordinationDirectoryPanel",
+    "coordinationDirectory",
     "rdMap",
     "mapStatus",
     "provinceDetail",
@@ -136,6 +160,7 @@ const nodes = Object.fromEntries(
     "provinceInput",
     "exteriorSectionInput",
     "exteriorDistrictInput",
+    "municipalityInput",
     "regionInput",
     "macroRegionInput",
     "adminRoleSection",
@@ -170,6 +195,8 @@ const nodes = Object.fromEntries(
     "userFormMessage",
     "userTableBody",
     "auditTableBody",
+    "heroPrimaryAction",
+    "heroSecondaryAction",
   ].map((id) => [id, document.getElementById(id)])
 );
 nodes.appShell = document.querySelector(".app-shell");
@@ -178,6 +205,8 @@ nodes.appViews = [...document.querySelectorAll(".app-view")];
 
 let mapModel = null;
 let loadingState = false;
+let nationalAssignmentQuery = "";
+const selectedMunicipalities = new Map();
 
 bootstrap();
 
@@ -202,6 +231,8 @@ function attachEvents() {
   nodes.cancelSelfRegistrationBtn.addEventListener("click", () => nodes.selfRegistrationDialog.close());
   nodes.selfRegistrationForm.addEventListener("submit", handleSelfRegistration);
   nodes.selfTerritoryScope.addEventListener("change", syncSelfRegistrationTerritory);
+  nodes.selfProvince.addEventListener("change", syncSelfRegistrationTerritory);
+  nodes.selfExteriorSection.addEventListener("change", syncSelfRegistrationTerritory);
   nodes.selfCedula.addEventListener("input", () => {
     nodes.selfCedula.value = normalizeCedula(nodes.selfCedula.value);
   });
@@ -231,6 +262,9 @@ function attachEvents() {
   });
   nodes.provinceInput.addEventListener("change", syncLocationFieldsFromPlan);
   nodes.exteriorSectionInput.addEventListener("change", syncLocationFieldsFromPlan);
+  document.getElementById("inductionInput").addEventListener("change", () =>
+    syncInductionControls(true)
+  );
   nodes.cedulaInput.addEventListener("input", formatCedulaInput);
   nodes.cedulaInput.addEventListener("blur", findRecordByCedula);
   nodes.activistForm.addEventListener("submit", handleRecordSubmit);
@@ -326,6 +360,11 @@ function syncSelfRegistrationTerritory() {
   nodes.selfExteriorDistrictField.classList.toggle("hidden", !exterior);
   nodes.selfProvince.required = !exterior;
   nodes.selfExteriorSection.required = exterior;
+  const municipalities = exterior
+    ? [nodes.selfExteriorSection.value].filter(Boolean)
+    : state.publicCatalogs.municipalitiesByProvince?.[nodes.selfProvince.value] || [];
+  populateSelect(nodes.selfMunicipality, municipalities, municipalities.length === 0);
+  nodes.selfMunicipality.required = municipalities.length > 0;
 }
 
 async function handleSelfRegistration(event) {
@@ -486,13 +525,13 @@ function renderStaticOptions() {
 function configureAccessView() {
   const activist = state.currentUser?.accessRole === "activist";
   [
+    nodes.territoryScopeInput,
+    nodes.provinceInput,
+    nodes.exteriorSectionInput,
     nodes.statusInput,
     document.getElementById("provCoordinatorInput"),
     document.getElementById("regionalCoordinatorInput"),
     document.getElementById("macroCoordinatorInput"),
-    document.getElementById("inductionInput"),
-    document.getElementById("inductionDateInput"),
-    document.getElementById("c28Input"),
   ].forEach((control) => {
     if (control) control.disabled = activist;
   });
@@ -500,6 +539,7 @@ function configureAccessView() {
   document.getElementById("saveRecordBtn").textContent = activist
     ? "Actualizar mi perfil"
     : "Guardar registro";
+  syncInductionControls(false);
 
   const dashboardView = document.getElementById("dashboard");
   const registrationView = document.getElementById("registro");
@@ -509,12 +549,13 @@ function configureAccessView() {
   const registrationHeading = document.querySelector("#registro .section-intro h3");
   const databaseHeading = document.querySelector("#base .panel-head h3");
   const actionHeading = document.querySelector("#base thead th:last-child");
+  const scoreboardHeading = document.querySelector(".scoreboard-panel .panel-head h3");
 
   if (activist) {
-    dashboardView.dataset.moduleTitle = "Avances de mi territorio";
+    dashboardView.dataset.moduleTitle = "Mapa nacional y avances de mi territorio";
     dashboardView.dataset.moduleSummary =
-      "Indicadores agregados de su provincia o seccional, sin datos privados de otros integrantes.";
-    dashboardView.dataset.modulePill = "Vista territorial";
+      "Compare el avance agregado de las 32 provincias y consulte la operación de su propio territorio.";
+    dashboardView.dataset.modulePill = "Competencia territorial";
     registrationView.dataset.moduleTitle = "Mi perfil de activista";
     registrationView.dataset.moduleSummary =
       "Actualice su contacto, disponibilidad, capacidades y redes sociales.";
@@ -523,12 +564,15 @@ function configureAccessView() {
     databaseView.dataset.moduleSummary =
       "Consulte integrantes, roles y redes públicas de su equipo territorial.";
     databaseView.dataset.modulePill = "Directorio territorial";
-    heroTitle.textContent = "Organización y avances de mi territorio.";
+    heroTitle.textContent = "Tu territorio dentro del avance nacional.";
     heroText.textContent =
-      "Consulte la cobertura agregada de su equipo, actualice su perfil y conecte con las redes de los integrantes de su territorio.";
+      "Compare el progreso de las provincias en el mapa nacional, siga los indicadores de su equipo y conecte con las redes de los integrantes de su territorio.";
     registrationHeading.textContent = "Mantenga actualizada su ficha y capacidad de activación.";
     databaseHeading.textContent = "Integrantes y redes de mi equipo territorial";
     actionHeading.textContent = "Acceso";
+    scoreboardHeading.textContent = "Clasificación nacional de provincias";
+    nodes.heroPrimaryAction.textContent = "Actualizar mi ficha";
+    nodes.heroSecondaryAction.textContent = "Ver mi directorio";
   } else {
     dashboardView.dataset.moduleTitle = "Centro nacional de operaciones RAD-C28";
     dashboardView.dataset.moduleSummary =
@@ -548,10 +592,14 @@ function configureAccessView() {
     registrationHeading.textContent = "Incorporación y actualización de integrantes de RAD-C28.";
     databaseHeading.textContent = "Consulta y seguimiento de integrantes de RAD-C28";
     actionHeading.textContent = "Acciones";
+    scoreboardHeading.textContent = "Ranking de provincias y alertas";
+    nodes.heroPrimaryAction.textContent = "Registrar activista";
+    nodes.heroSecondaryAction.textContent = "Consultar registros";
   }
 }
 
 function renderAll() {
+  renderCoordinationDirectory();
   renderMetrics();
   renderPulse();
   renderFunnel();
@@ -560,6 +608,7 @@ function renderAll() {
   renderFilters();
   renderRecordTable();
   updateHeroSignals();
+  renderHeroInsights();
   paintMap();
 }
 
@@ -660,7 +709,10 @@ function findRecordByCedula() {
 function loadRecordIntoForm(record) {
   nodes.recordId.value = record.id;
   nodes.territoryScopeInput.value = record.territoryScope;
+  nodes.provinceInput.value = record.province;
+  nodes.exteriorSectionInput.value = record.exteriorSection;
   syncTerritoryScopeUI();
+  syncLocationFieldsFromPlan(record.municipality);
   nodes.adminRoleSection.classList.toggle(
     "hidden",
     state.currentUser?.accessRole === "activist"
@@ -675,17 +727,9 @@ function loadRecordIntoForm(record) {
     ageRangeInput: record.ageRange,
     sexInput: record.sex,
     statusInput: record.status,
-    provinceInput: record.province,
-    exteriorSectionInput: record.exteriorSection,
     exteriorDistrictInput: record.exteriorCircunscription,
-    municipalityInput: record.municipality,
     districtInput: record.districtMunicipal,
-    regionInput: record.region,
-    macroRegionInput: record.macroRegion,
     roleInput: record.role,
-    provCoordinatorInput: record.provincialCoordinator,
-    regionalCoordinatorInput: record.regionalCoordinator,
-    macroCoordinatorInput: record.macroCoordinator,
     inductionDateInput: record.inductionDate,
     responseWindowInput: record.responseWindow,
     availabilityInput: record.availability,
@@ -695,6 +739,7 @@ function loadRecordIntoForm(record) {
   setChecked("inductionInput", record.tookInduction);
   setChecked("c28Input", record.c28Registered);
   setChecked("pollSquadInput", record.pollSquad);
+  syncInductionControls(false);
   document.querySelectorAll(".skill-chip input").forEach((input) => {
     input.checked = record.skills.includes(input.value);
   });
@@ -723,6 +768,7 @@ function clearForm() {
   nodes.autofillStatus.textContent = "Cédula sin validar";
   syncTerritoryScopeUI();
   syncLocationFieldsFromPlan();
+  syncInductionControls(false);
   document.querySelectorAll(".skill-chip input").forEach((input) => (input.checked = false));
 }
 
@@ -744,6 +790,9 @@ function syncTerritoryScopeUI() {
   nodes.exteriorSectionField.classList.toggle("hidden", !exterior);
   nodes.districtField.classList.toggle("hidden", exterior);
   nodes.exteriorDistrictField.classList.toggle("hidden", !exterior);
+  nodes.provinceInput.required = !exterior;
+  nodes.exteriorSectionInput.required = exterior;
+  nodes.municipalityInput.required = !exterior || Boolean(nodes.exteriorSectionInput.value);
   nodes.provCoordinatorLabel.textContent = exterior ? "Responsable seccional" : "Coordinador provincial";
   nodes.regionalCoordinatorLabel.textContent = exterior
     ? "Coordinador de circunscripción"
@@ -751,28 +800,198 @@ function syncTerritoryScopeUI() {
   nodes.macroCoordinatorLabel.textContent = exterior ? "Enlace de exterior" : "Coordinador macroregional";
 }
 
-function syncLocationFieldsFromPlan() {
+function syncLocationFieldsFromPlan(preferredMunicipality = "") {
+  const preferred =
+    typeof preferredMunicipality === "string"
+      ? preferredMunicipality
+      : nodes.municipalityInput.value;
   if (nodes.territoryScopeInput.value === EXTERIOR_SCOPE) {
     const plan = state.exteriorPlans.find((item) => item.seccional === nodes.exteriorSectionInput.value);
     nodes.regionInput.value = plan?.zone || "";
     nodes.macroRegionInput.value = plan?.macroRegion || "Exterior";
+    setValue("provCoordinatorInput", plan?.provincialCoordinator || "");
+    setValue("regionalCoordinatorInput", plan?.regionalCoordinator || "");
+    setValue("macroCoordinatorInput", plan?.macroCoordinator || "");
+    const cityOptions = [plan?.seccional].filter(Boolean);
+    populateSelect(nodes.municipalityInput, cityOptions, cityOptions.length === 0);
   } else {
     const plan = state.provincePlans.find((item) => item.province === nodes.provinceInput.value);
     nodes.regionInput.value = plan?.region || "";
     nodes.macroRegionInput.value = plan?.macroRegion || "";
+    setValue("provCoordinatorInput", plan?.provincialCoordinator || "");
+    setValue("regionalCoordinatorInput", plan?.regionalCoordinator || "");
+    setValue("macroCoordinatorInput", plan?.macroCoordinator || "");
+    const municipalities =
+      state.catalogs.municipalitiesByProvince?.[nodes.provinceInput.value] || [];
+    populateSelect(
+      nodes.municipalityInput,
+      municipalities,
+      municipalities.length === 0
+    );
   }
+  if ([...nodes.municipalityInput.options].some((option) => option.value === preferred)) {
+    nodes.municipalityInput.value = preferred;
+  }
+  nodes.municipalityInput.required = nodes.municipalityInput.options.length > 0;
+}
+
+function syncInductionControls(setDefaultDate) {
+  const induction = document.getElementById("inductionInput");
+  const date = document.getElementById("inductionDateInput");
+  date.disabled = !induction.checked;
+  date.required = induction.checked;
+  if (!induction.checked) {
+    date.value = "";
+  } else if (setDefaultDate && !date.value) {
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    date.value = today.toISOString().slice(0, 10);
+  }
+}
+
+function renderCoordinationDirectory() {
+  const cards = NATIONAL_COORDINATION_FIELDS.map(([key, label]) => ({
+    label,
+    ...(state.nationalCoordination?.[key] || {}),
+  }));
+  if (state.currentUser?.accessRole === "activist") {
+    const ownPlan = getOwnTerritoryPlan();
+    const territorialAssignments = [
+      [
+        state.ownRecord?.territoryScope === EXTERIOR_SCOPE
+          ? "Responsable seccional"
+          : "Coordinador provincial",
+        ownPlan?.provincialCoordinator,
+      ],
+      [
+        state.ownRecord?.territoryScope === EXTERIOR_SCOPE
+          ? "Coordinador de circunscripción"
+          : "Coordinador regional",
+        ownPlan?.regionalCoordinator,
+      ],
+      [
+        state.ownRecord?.territoryScope === EXTERIOR_SCOPE
+          ? "Enlace de exterior"
+          : "Coordinador macroregional",
+        ownPlan?.macroCoordinator,
+      ],
+    ];
+    territorialAssignments.forEach(([label, fullName]) => {
+      cards.push({
+        label,
+        fullName: fullName || "",
+        organizationalRole: "Coordinación de mi territorio",
+        territory:
+          state.ownRecord?.territoryScope === EXTERIOR_SCOPE
+            ? state.ownRecord?.exteriorSection
+            : state.ownRecord?.province,
+      });
+    });
+    const municipalAssignment = state.municipalityCoordinators.find(
+      (assignment) =>
+        assignment.province === state.ownRecord?.province &&
+        assignment.municipality === state.ownRecord?.municipality
+    );
+    const municipalRoleRecord = municipalAssignment
+      ? null
+      : findTerritorialRoleAssignment("Coordinador municipal");
+    cards.push({
+      label: "Coordinador municipal",
+      fullName:
+        municipalAssignment?.coordinatorName ||
+        (municipalRoleRecord
+          ? `${municipalRoleRecord.firstName} ${municipalRoleRecord.lastName}`
+          : ""),
+      organizationalRole: "Coordinación municipal",
+      territory: [state.ownRecord?.municipality, state.ownRecord?.province]
+        .filter(Boolean)
+        .join(" · "),
+    });
+    [["Enlace de contenidos territorial", "Apoyo de contenidos"]].forEach(
+      ([label, role]) => {
+      const record = findTerritorialRoleAssignment(role);
+      const publicNetworks = record ? formatNetworkHandles(record.networks) : "";
+      cards.push({
+        label,
+        fullName: record ? `${record.firstName} ${record.lastName}` : "",
+        organizationalRole: record?.role || "",
+        territory: record
+          ? [record.municipality, territoryName(record)].filter(Boolean).join(" · ")
+          : "",
+        publicNetworks:
+          publicNetworks && publicNetworks !== "Sin redes registradas"
+            ? publicNetworks
+            : "",
+      });
+      }
+    );
+  }
+
+  nodes.coordinationDirectory.innerHTML = cards
+    .map((assignment) => {
+      const contact = [
+        assignment.whatsapp ? `WhatsApp: ${assignment.whatsapp}` : "",
+        assignment.phone ? `Tel.: ${assignment.phone}` : "",
+        assignment.email || "",
+        assignment.publicNetworks ? `Redes: ${assignment.publicNetworks}` : "",
+      ].filter(Boolean);
+      return `
+        <article class="coordination-directory-card${assignment.fullName ? "" : " is-vacant"}">
+          <p>${escapeHtml(assignment.label)}</p>
+          <strong>${escapeHtml(assignment.fullName || "Por asignar")}</strong>
+          ${
+            assignment.fullName
+              ? `<span>${escapeHtml(
+                  [assignment.organizationalRole, assignment.territory]
+                    .filter(Boolean)
+                    .join(" · ")
+                )}</span>`
+              : "<span>La administración aún no ha realizado esta designación.</span>"
+          }
+          ${
+            contact.length
+              ? `<small>${contact.map((item) => escapeHtml(item)).join("<br>")}</small>`
+              : ""
+          }
+        </article>`;
+    })
+    .join("");
+}
+
+function findTerritorialRoleAssignment(role) {
+  if (!state.ownRecord) return null;
+  const candidates = state.records.filter((record) => record.role === role);
+  return (
+    candidates.find(
+      (record) =>
+        state.ownRecord.municipality &&
+        record.municipality === state.ownRecord.municipality
+    ) ||
+    candidates[0] ||
+    null
+  );
 }
 
 function renderMetrics() {
   const metrics = computeMetrics();
-  const cards = [
-    ["Registros totales", metrics.totalRecords, "integrantes en la base central", `${metrics.activeRecords} activos`],
-    ["Alcance declarado", formatCompact(metrics.totalReach), "seguidores registrados en redes activas", `${metrics.multiNetworkRate}% con 3 redes o más`],
-    ["Inducción", `${metrics.inductionRate}%`, "completó el taller", `${metrics.inductedCount} integrantes`],
-    ["Inscripción C28", `${metrics.c28Rate}%`, "con inscripción confirmada", `${metrics.c28Count} altas`],
-    ["Respuesta temprana", `${metrics.rapidResponseRate}%`, "disponible en 15 minutos o menos", `${metrics.rapidResponseCount} integrantes`],
-    ["Provincias conformes", metrics.greenProvinces, "territorios con avance sólido", `${metrics.yellowProvinces} en progreso`],
-  ];
+  const activistView = state.currentUser?.accessRole === "activist";
+  const cards = activistView
+    ? [
+        ["Mi equipo territorial", metrics.totalRecords, "integrantes visibles en mi directorio", `${metrics.activeRecords} activos`],
+        ["Alcance de mi equipo", formatCompact(metrics.totalReach), "seguidores declarados en redes activas", `${metrics.multiNetworkRate}% con 3 redes o más`],
+        ["Inducción de mi equipo", `${metrics.inductionRate}%`, "completó el taller", `${metrics.inductedCount} integrantes`],
+        ["Inscripción C28 de mi equipo", `${metrics.c28Rate}%`, "con inscripción confirmada", `${metrics.c28Count} altas`],
+        ["Respuesta de mi equipo", `${metrics.rapidResponseRate}%`, "disponible en 15 minutos o menos", `${metrics.rapidResponseCount} integrantes`],
+        ["Provincias en verde", metrics.greenProvinces, "avance nacional agregado", `${metrics.yellowProvinces} en progreso`],
+      ]
+    : [
+        ["Registros totales", metrics.totalRecords, "integrantes en la base central", `${metrics.activeRecords} activos`],
+        ["Alcance declarado", formatCompact(metrics.totalReach), "seguidores registrados en redes activas", `${metrics.multiNetworkRate}% con 3 redes o más`],
+        ["Inducción", `${metrics.inductionRate}%`, "completó el taller", `${metrics.inductedCount} integrantes`],
+        ["Inscripción C28", `${metrics.c28Rate}%`, "con inscripción confirmada", `${metrics.c28Count} altas`],
+        ["Respuesta temprana", `${metrics.rapidResponseRate}%`, "disponible en 15 minutos o menos", `${metrics.rapidResponseCount} integrantes`],
+        ["Provincias conformes", metrics.greenProvinces, "territorios con avance sólido", `${metrics.yellowProvinces} en progreso`],
+      ];
   nodes.metricGrid.innerHTML = cards
     .map(
       ([label, value, caption, trend]) => `
@@ -788,10 +1007,11 @@ function renderMetrics() {
 
 function updateHeroSignals() {
   const metrics = computeMetrics();
+  const activistView = state.currentUser?.accessRole === "activist";
   const signals = [
-    ["Cobertura territorial", `${metrics.coveredProvinces}/${state.provincePlans.length}`, "provincias con registros"],
-    ["Formación operativa", `${metrics.inductionRate}%`, "con inducción completada"],
-    ["Listos en 15 min", metrics.rapidResponseCount, "capacidad de respuesta temprana"],
+    ["Cobertura nacional", `${metrics.coveredProvinces}/${state.provincePlans.length}`, "provincias con registros"],
+    [activistView ? "Formación de mi equipo" : "Formación operativa", `${metrics.inductionRate}%`, "con inducción completada"],
+    [activistView ? "Mi equipo en 15 min" : "Listos en 15 min", metrics.rapidResponseCount, "capacidad de respuesta temprana"],
   ];
   nodes.heroSignals.innerHTML = signals
     .map(
@@ -803,19 +1023,98 @@ function updateHeroSignals() {
         </div>`
     )
     .join("");
-  nodes.heroReach.textContent = formatCompact(metrics.totalReach);
+  nodes.heroReach.textContent = formatCompact(getNationalReach());
   nodes.heroResponse.textContent = `${metrics.rapidResponseRate}%`;
+}
+
+function renderHeroInsights() {
+  const activistView = state.currentUser?.accessRole === "activist";
+  const summaries = buildProvinceSummaries();
+  const sex =
+    activistView && state.ownTerritoryInsights?.sex
+      ? state.ownTerritoryInsights.sex
+      : computeSexSummary(state.records);
+  const ownTerritoryName = state.ownRecord ? territoryName(state.ownRecord) : "";
+  const territorySummary = activistView
+    ? state.ownRecord?.territoryScope === EXTERIOR_SCOPE
+      ? getExteriorSummary(state.ownRecord.exteriorSection)
+      : getProvinceSummary(state.ownRecord?.province)
+    : null;
+  const compliance = activistView
+    ? territorySummary?.score || 0
+    : average(summaries.map((summary) => summary.score));
+  const complianceStatus =
+    compliance >= 75 ? "Verde" : compliance >= 45 ? "Amarillo" : "Rojo";
+  const reach = activistView
+    ? territorySummary?.totalFollowers || 0
+    : state.records.reduce((sum, record) => sum + totalFollowers(record.networks), 0);
+  const reachRanking =
+    activistView && state.ownRecord?.territoryScope === DOMESTIC_SCOPE
+      ? [...summaries]
+          .sort((a, b) => b.totalFollowers - a.totalFollowers)
+          .findIndex((summary) => summary.province === state.ownRecord.province) + 1
+      : 0;
+  const declaredSexCaption = sex.declaredCount
+    ? `${sex.declaredCount} ${sex.declaredCount === 1 ? "registro declarado" : "registros declarados"}`
+    : "Sin datos declarados";
+  const complianceCaption = activistView
+    ? ownTerritoryName
+    : "Promedio agregado de las 32 provincias";
+  const reachCaption = activistView
+    ? `${ownTerritoryName}${reachRanking ? ` · posición ${reachRanking} nacional` : ""}`
+    : `${summaries.filter((summary) => summary.totalFollowers > 0).length} provincias con alcance declarado`;
+
+  nodes.heroInsights.innerHTML = `
+    <article class="hero-insight-card hero-insight-sex">
+      <div class="hero-insight-head">
+        <p class="eyebrow">Sexo</p>
+        <span>${escapeHtml(declaredSexCaption)}</span>
+      </div>
+      <div class="metric-sex-row">
+        <div class="metric-sex-chip metric-sex-chip-female">
+          <span>Femenino</span><strong>${sex.femaleRate}%</strong><small>${sex.femaleCount}</small>
+        </div>
+        <div class="metric-sex-chip metric-sex-chip-male">
+          <span>Masculino</span><strong>${sex.maleRate}%</strong><small>${sex.maleCount}</small>
+        </div>
+      </div>
+      <div class="metric-sex-bar" aria-label="Distribución por sexo">
+        <span class="metric-sex-fill metric-sex-fill-female" style="width:${sex.femaleRate}%"></span>
+        <span class="metric-sex-fill metric-sex-fill-male" style="width:${sex.maleRate}%"></span>
+      </div>
+    </article>
+    <article class="hero-insight-card">
+      <div class="hero-insight-head">
+        <p class="eyebrow">Cumplimiento territorial</p>
+        <span class="score-chip ${statusClass(complianceStatus)}">${complianceStatus}</span>
+      </div>
+      <strong class="hero-insight-value">${compliance}%</strong>
+      <div class="hero-insight-progress" aria-label="Nivel de cumplimiento territorial">
+        <span style="width:${compliance}%"></span>
+      </div>
+      <small>${escapeHtml(complianceCaption)}</small>
+    </article>
+    <article class="hero-insight-card hero-insight-reach">
+      <div class="hero-insight-head">
+        <p class="eyebrow">Alcance territorial</p>
+        <span>Redes activas</span>
+      </div>
+      <strong class="hero-insight-value">${formatCompact(reach)}</strong>
+      <small>seguidores declarados</small>
+      <div class="hero-insight-territory">${escapeHtml(reachCaption)}</div>
+    </article>`;
 }
 
 function renderPulse() {
   const metrics = computeMetrics();
   const summaries = buildProvinceSummaries();
+  const activistView = state.currentUser?.accessRole === "activist";
   const items = [
-    ["Cobertura sobre metas", average(summaries.map((item) => item.coverageScore)), "Registros actuales respecto a las metas territoriales."],
-    ["Formación", metrics.inductionRate, "Integrantes con taller de inducción completado."],
-    ["Respuesta temprana", metrics.rapidResponseRate, "Disponibilidad declarada en 15 minutos o menos."],
-    ["Capacidad de sondeos", metrics.pollSquadRate, "Integrantes disponibles para sondeos y votaciones."],
-    ["Presencia multicanal", metrics.multiNetworkRate, "Integrantes con actividad declarada en tres redes o más."],
+    ["Cobertura nacional sobre metas", average(summaries.map((item) => item.coverageScore)), "Avance agregado de las provincias respecto a sus metas."],
+    [activistView ? "Formación de mi equipo" : "Formación", metrics.inductionRate, "Integrantes con taller de inducción completado."],
+    [activistView ? "Respuesta de mi equipo" : "Respuesta temprana", metrics.rapidResponseRate, "Disponibilidad declarada en 15 minutos o menos."],
+    [activistView ? "Sondeos en mi equipo" : "Capacidad de sondeos", metrics.pollSquadRate, "Integrantes disponibles para sondeos y votaciones."],
+    [activistView ? "Redes de mi equipo" : "Presencia multicanal", metrics.multiNetworkRate, "Integrantes con actividad declarada en tres redes o más."],
   ];
   nodes.pulseList.innerHTML = items
     .map(
@@ -851,6 +1150,7 @@ function renderFunnel() {
 
 function renderProvinceSummary() {
   const summaries = buildProvinceSummaries().sort((a, b) => b.score - a.score);
+  const activistView = state.currentUser?.accessRole === "activist";
   nodes.provinceSummaryTable.innerHTML = `
     <div class="summary-row">
       <strong>Provincia</strong><strong>Avance</strong><strong>Meta</strong>
@@ -858,9 +1158,9 @@ function renderProvinceSummary() {
     </div>
     ${summaries
       .map(
-        (item) => `
-          <button class="summary-row province-summary-trigger" data-province="${escapeAttribute(item.province)}">
-            <div><strong>${escapeHtml(item.province)}</strong><span class="table-muted">${escapeHtml(item.region)}</span></div>
+        (item, index) => `
+          <button class="summary-row province-summary-trigger${isOwnProvince(item.province) ? " is-own-territory" : ""}" data-province="${escapeAttribute(item.province)}">
+            <div><strong>${activistView ? `${index + 1}. ` : ""}${escapeHtml(item.province)}</strong><span class="table-muted">${escapeHtml(item.region)}${isOwnProvince(item.province) ? " · Tu territorio" : ""}</span></div>
             <div>${item.score}%</div><div>${item.targetActivists}</div><div>${item.activists}</div>
             <div>${formatCompact(item.totalFollowers)}</div>
             <div><span class="score-chip ${statusClass(item.status)}">${item.status}</span></div>
@@ -874,13 +1174,15 @@ function renderProvinceSummary() {
 
 function renderStructure() {
   const coordination = state.nationalCoordination;
-  const nationalFields = [
-    ["nationalCoordinator", "Coordinador nacional general"],
-    ["deputyNationalCoordinator", "Subcoordinador nacional"],
-    ["operationsCoordinator", "Responsable de operaciones digitales"],
-    ["contentCoordinator", "Responsable de contenidos"],
-    ["pollsCoordinator", "Responsable de sondeos"],
-  ];
+  const canAssignNational = state.currentUser?.accessRole === "admin";
+  const assignableRecords = state.records
+    .filter((record) => record.id)
+    .sort((a, b) =>
+      `${a.firstName} ${a.lastName}`.localeCompare(
+        `${b.firstName} ${b.lastName}`,
+        "es"
+      )
+    );
   nodes.provinceConfigTable.innerHTML = `
     <div class="planner-national-card">
       <div>
@@ -888,15 +1190,47 @@ function renderStructure() {
         <h4>Dirección central RAD-C28</h4>
         <p>Responsables nacionales de la operación y sus equipos de apoyo.</p>
       </div>
+      ${
+        canAssignNational
+          ? `<div class="planner-national-search">
+              <label for="nationalAssignmentSearch">Buscar persona registrada</label>
+              <input
+                type="search"
+                id="nationalAssignmentSearch"
+                value="${escapeAttribute(nationalAssignmentQuery)}"
+                placeholder="Nombre, cédula, provincia, municipio o cargo"
+                autocomplete="off"
+              />
+              <small id="nationalAssignmentSearchStatus" aria-live="polite"></small>
+            </div>`
+          : ""
+      }
       <div class="planner-national-grid">
-        ${nationalFields
+        ${NATIONAL_COORDINATION_FIELDS
           .map(
-            ([field, label]) => `
+            ([field, label]) => {
+              const assignment = coordination[field] || {};
+              return `
               <div class="planner-national-field">
                 <label>${escapeHtml(label)}
-                  <input value="${escapeAttribute(coordination[field] || "")}" data-national="${field}" />
+                  <select data-national="${field}" ${canAssignNational ? "" : "disabled"}>
+                    <option value="">Por asignar</option>
+                  </select>
                 </label>
+                <small>${
+                  assignment.fullName
+                    ? escapeHtml(
+                        [
+                          assignment.organizationalRole,
+                          assignment.whatsapp || assignment.phone || assignment.email,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      )
+                    : "Seleccione una persona registrada."
+                }</small>
               </div>`
+            }
           )
           .join("")}
       </div>
@@ -919,6 +1253,86 @@ function renderStructure() {
   nodes.provinceConfigTable.querySelectorAll("[data-plan-key]").forEach((input) => {
     input.addEventListener("change", handlePlanChange);
   });
+  nodes.provinceConfigTable
+    .querySelectorAll("[data-municipality-picker]")
+    .forEach((input) => input.addEventListener("change", handleMunicipalitySelection));
+  nodes.provinceConfigTable
+    .querySelectorAll("[data-municipality-coordinator]")
+    .forEach((input) =>
+      input.addEventListener("change", handleMunicipalityCoordinatorChange)
+    );
+  const nationalSearch = document.getElementById("nationalAssignmentSearch");
+  if (nationalSearch) {
+    nationalSearch.addEventListener("input", () => {
+      nationalAssignmentQuery = nationalSearch.value;
+      updateNationalAssignmentSelects(assignableRecords);
+    });
+  }
+  updateNationalAssignmentSelects(assignableRecords);
+}
+
+function updateNationalAssignmentSelects(assignableRecords) {
+  const query = normalizeSearchValue(nationalAssignmentQuery);
+  const matches =
+    query.length >= 2
+      ? assignableRecords.filter((record) =>
+          normalizeSearchValue(
+            [
+              record.firstName,
+              record.lastName,
+              record.cedula,
+              territoryName(record),
+              record.municipality,
+              record.role,
+            ].join(" ")
+          ).includes(query)
+        )
+      : [];
+  const visibleMatches = matches.slice(0, 50);
+
+  nodes.provinceConfigTable.querySelectorAll("[data-national]").forEach((select) => {
+    const field = select.dataset.national;
+    const selectedId = state.nationalCoordination[field]?.activistId || "";
+    const selectedRecord = assignableRecords.find(
+      (record) => record.id === selectedId
+    );
+    const options = selectedRecord
+      ? [
+          selectedRecord,
+          ...visibleMatches.filter((record) => record.id !== selectedRecord.id),
+        ]
+      : visibleMatches;
+    select.innerHTML = `
+      <option value="">Por asignar</option>
+      ${options
+        .map(
+          (record) => `
+            <option value="${escapeAttribute(record.id)}" ${
+              record.id === selectedId ? "selected" : ""
+            }>
+              ${escapeHtml(`${record.firstName} ${record.lastName}`)} · ${escapeHtml(
+                [record.municipality, territoryName(record), record.role]
+                  .filter(Boolean)
+                  .join(" · ")
+              )}
+            </option>`
+        )
+        .join("")}`;
+  });
+
+  const status = document.getElementById("nationalAssignmentSearchStatus");
+  if (!status) return;
+  if (query.length < 2) {
+    status.textContent = `Escriba al menos 2 caracteres para buscar entre ${assignableRecords.length} registros.`;
+  } else if (!matches.length) {
+    status.textContent = "No se encontraron personas con ese criterio.";
+  } else if (matches.length > visibleMatches.length) {
+    status.textContent = `${matches.length} coincidencias; se muestran las primeras ${visibleMatches.length}.`;
+  } else {
+    status.textContent = `${matches.length} ${
+      matches.length === 1 ? "persona disponible" : "personas disponibles"
+    }.`;
+  }
 }
 
 function renderPlanGroups(title, plans, exterior) {
@@ -940,6 +1354,19 @@ function renderPlanGroups(title, plans, exterior) {
 function renderPlanCard(plan, exterior) {
   const name = exterior ? plan.seccional : plan.province;
   const summary = exterior ? getExteriorSummary(name) : getProvinceSummary(name);
+  const municipalities = exterior
+    ? []
+    : state.catalogs.municipalitiesByProvince?.[name] || [];
+  const requestedMunicipality = selectedMunicipalities.get(name) || "";
+  const selectedMunicipality = municipalities.includes(requestedMunicipality)
+    ? requestedMunicipality
+    : "";
+  const municipalAssignment = state.municipalityCoordinators.find(
+    (assignment) =>
+      assignment.province === name &&
+      assignment.municipality === selectedMunicipality
+  );
+  const canAssignMunicipal = state.currentUser?.accessRole === "admin";
   const fields = exterior
     ? [
         ["circunscriptionCount", "Circunscripciones", plan.circunscriptionCount],
@@ -985,6 +1412,53 @@ function renderPlanCard(plan, exterior) {
           )
           .join("")}
       </div>
+      ${
+        exterior
+          ? ""
+          : `<div class="planner-municipal-assignment">
+              <div class="planner-municipal-head">
+                <div>
+                  <strong>Coordinación municipal</strong>
+                  <span>Seleccione el municipio y escriba el nombre de la persona designada.</span>
+                </div>
+              </div>
+              <div class="planner-municipal-grid">
+                <label>Municipio
+                  <select
+                    data-municipality-picker
+                    data-municipality-province="${escapeAttribute(name)}"
+                    ${canAssignMunicipal ? "" : "disabled"}
+                  >
+                    <option value="">Seleccione un municipio</option>
+                    ${municipalities
+                      .map(
+                        (municipality) => `
+                          <option value="${escapeAttribute(municipality)}" ${
+                            municipality === selectedMunicipality ? "selected" : ""
+                          }>${escapeHtml(municipality)}</option>`
+                      )
+                      .join("")}
+                  </select>
+                </label>
+                <label>Nombre del coordinador municipal
+                  <input
+                    value="${escapeAttribute(
+                      municipalAssignment?.coordinatorName || ""
+                    )}"
+                    placeholder="${
+                      selectedMunicipality
+                        ? "Escriba el nombre completo"
+                        : "Seleccione primero un municipio"
+                    }"
+                    data-municipality-coordinator
+                    data-municipality-province="${escapeAttribute(name)}"
+                    ${canAssignMunicipal && selectedMunicipality ? "" : "disabled"}
+                  />
+                </label>
+              </div>
+              <small>Esta designación solo será visible para los activistas de ese municipio.</small>
+            </div>`
+      }
       <div class="planner-input planner-whatsapp-field">
         <label>Enlace del grupo de WhatsApp
           <input type="url" value="${escapeAttribute(plan.whatsappGroupUrl || "")}"
@@ -998,6 +1472,58 @@ function renderPlanCard(plan, exterior) {
         <div class="planner-macro-stat"><span>Avance</span><strong>${summary.score}%</strong></div>
       </div>
     </article>`;
+}
+
+function handleMunicipalitySelection(event) {
+  const province = event.target.dataset.municipalityProvince;
+  const municipality = event.target.value;
+  selectedMunicipalities.set(province, municipality);
+  const container = event.target.closest(".planner-municipal-assignment");
+  const coordinatorInput = container?.querySelector(
+    "[data-municipality-coordinator]"
+  );
+  if (!coordinatorInput) return;
+  const assignment = state.municipalityCoordinators.find(
+    (item) =>
+      item.province === province && item.municipality === municipality
+  );
+  coordinatorInput.value = assignment?.coordinatorName || "";
+  coordinatorInput.disabled = !municipality;
+  coordinatorInput.placeholder = municipality
+    ? "Escriba el nombre completo"
+    : "Seleccione primero un municipio";
+}
+
+async function handleMunicipalityCoordinatorChange(event) {
+  const province = event.target.dataset.municipalityProvince;
+  const container = event.target.closest(".planner-municipal-assignment");
+  const municipality =
+    container?.querySelector("[data-municipality-picker]")?.value || "";
+  if (!municipality) {
+    toast("Seleccione primero un municipio.", "warning");
+    return;
+  }
+  event.target.disabled = true;
+  try {
+    await api(
+      `/api/plans/municipalities/${encodeURIComponent(
+        province
+      )}/${encodeURIComponent(municipality)}`,
+      {
+        method: "PUT",
+        body: { coordinatorName: event.target.value.trim() },
+      }
+    );
+    toast(
+      event.target.value.trim()
+        ? "Coordinador municipal actualizado."
+        : "Designación municipal eliminada."
+    );
+    await refreshState();
+  } catch (error) {
+    toast(error.message, "warning");
+    await refreshState();
+  }
 }
 
 async function handlePlanChange(event) {
@@ -1024,12 +1550,24 @@ async function handlePlanChange(event) {
 }
 
 async function handleCoordinationChange(event) {
-  state.nationalCoordination[event.target.dataset.national] = event.target.value.trim();
+  const field = event.target.dataset.national;
+  state.nationalCoordination[field] = {
+    ...(state.nationalCoordination[field] || {}),
+    activistId: event.target.value,
+  };
   try {
-    await api("/api/coordination", { method: "PUT", body: state.nationalCoordination });
+    const payload = Object.fromEntries(
+      NATIONAL_COORDINATION_FIELDS.map(([key]) => [
+        key,
+        { activistId: state.nationalCoordination[key]?.activistId || "" },
+      ])
+    );
+    await api("/api/coordination", { method: "PUT", body: payload });
     toast("Coordinación nacional actualizada.");
+    await refreshState();
   } catch (error) {
     toast(error.message, "warning");
+    await refreshState();
   }
 }
 
@@ -1073,8 +1611,7 @@ function renderRecordTable() {
       ? "Directorio limitado a los integrantes de su territorio."
       : "Información sincronizada con la base central."
     : "No hay registros que coincidan con los filtros.";
-  const ownPlan =
-    state.provincePlans[0] || state.exteriorPlans[0] || null;
+  const ownPlan = getOwnTerritoryPlan();
   const groupUrl = activistView ? ownPlan?.whatsappGroupUrl || "" : "";
   nodes.territoryWhatsappLink.hidden = !groupUrl;
   nodes.territoryWhatsappLink.href = groupUrl || "#";
@@ -1248,11 +1785,54 @@ function computeMetrics() {
   };
 }
 
+function getNationalReach() {
+  if (state.nationalReach !== null && state.nationalReach !== undefined) {
+    return Math.max(0, Number(state.nationalReach) || 0);
+  }
+  if (state.currentUser?.accessRole === "activist" && state.territoryProgress.length) {
+    return state.territoryProgress.reduce(
+      (total, territory) => total + Math.max(0, Number(territory.totalFollowers) || 0),
+      0
+    );
+  }
+  return state.records.reduce(
+    (total, record) => total + totalFollowers(record.networks),
+    0
+  );
+}
+
+function computeSexSummary(records) {
+  const femaleCount = records.filter((record) => record.sex === "Femenino").length;
+  const maleCount = records.filter((record) => record.sex === "Masculino").length;
+  const declaredCount = femaleCount + maleCount;
+  return {
+    femaleCount,
+    maleCount,
+    declaredCount,
+    unspecifiedCount: Math.max(0, records.length - declaredCount),
+    femaleRate: percentage(femaleCount, declaredCount),
+    maleRate: percentage(maleCount, declaredCount),
+  };
+}
+
 function buildProvinceSummaries() {
   return state.provincePlans.map((plan) => getProvinceSummary(plan.province));
 }
 
 function getProvinceSummary(province) {
+  if (state.currentUser?.accessRole === "activist") {
+    const progress = state.territoryProgress.find((item) => item.province === province);
+    if (progress) {
+      return {
+        ...progress,
+        coordinators: {
+          provincial: "",
+          regional: "",
+          macro: "",
+        },
+      };
+    }
+  }
   const plan = state.provincePlans.find((item) => item.province === province);
   return structureSummary(
     province,
@@ -1393,6 +1973,10 @@ function paintMap() {
 function selectProvince(province, scroll = true) {
   if (!mapModel) return;
   const summary = getProvinceSummary(province);
+  const activistView = state.currentUser?.accessRole === "activist";
+  const ranking = buildProvinceSummaries()
+    .sort((a, b) => b.score - a.score)
+    .findIndex((item) => item.province === province) + 1;
   mapModel.provinceLayers.forEach((group, name) => {
     group.path.classList.toggle("is-active", name === province);
     group.badge.classList.toggle("is-active", name === province);
@@ -1400,7 +1984,7 @@ function selectProvince(province, scroll = true) {
   nodes.provinceDetail.innerHTML = `
     <p class="eyebrow">${escapeHtml(summary.region)} · ${escapeHtml(summary.macroRegion)}</p>
     <h4>${escapeHtml(province)}</h4>
-    <p>Avance operativo de <strong>${summary.score}%</strong>, calculado con registros y metas vigentes.</p>
+    <p>Avance operativo de <strong>${summary.score}%</strong>, calculado con registros y metas vigentes.${activistView ? ` Ocupa la posición <strong>${ranking}</strong> de 32.` : ""}</p>
     <div class="province-stat-grid">
       <div class="province-stat"><span>Base actual</span><strong>${summary.activists}/${summary.targetActivists}</strong></div>
       <div class="province-stat"><span>Alcance declarado</span><strong>${formatCompact(summary.totalFollowers)}</strong></div>
@@ -1409,11 +1993,15 @@ function selectProvince(province, scroll = true) {
       <div class="province-stat"><span>Inscripción C28</span><strong>${summary.c28Score}%</strong></div>
       <div class="province-stat"><span>Sondeos</span><strong>${summary.pollScore}%</strong></div>
     </div>
-    <div class="info-stack">
-      <div class="info-item"><strong>Coordinación provincial</strong><span>${escapeHtml(summary.coordinators.provincial)}</span></div>
-      <div class="info-item"><strong>Coordinación regional</strong><span>${escapeHtml(summary.coordinators.regional)}</span></div>
-      <div class="info-item"><strong>Coordinación macroregional</strong><span>${escapeHtml(summary.coordinators.macro)}</span></div>
-    </div>`;
+    ${
+      activistView
+        ? `<div class="map-privacy-note"><strong>${isOwnProvince(province) ? "Tu territorio" : "Comparación protegida"}</strong><span>Estos son indicadores agregados. Los integrantes, redes, contactos y canales internos de otros territorios no se comparten.</span></div>`
+        : `<div class="info-stack">
+            <div class="info-item"><strong>Coordinación provincial</strong><span>${escapeHtml(summary.coordinators.provincial)}</span></div>
+            <div class="info-item"><strong>Coordinación regional</strong><span>${escapeHtml(summary.coordinators.regional)}</span></div>
+            <div class="info-item"><strong>Coordinación macroregional</strong><span>${escapeHtml(summary.coordinators.macro)}</span></div>
+          </div>`
+    }`;
   if (scroll && isMobileViewport()) nodes.provinceDetail.scrollIntoView({ behavior: "smooth" });
 }
 
@@ -1581,6 +2169,24 @@ function territoryName(record) {
   return record.territoryScope === EXTERIOR_SCOPE ? record.exteriorSection : record.province;
 }
 
+function isOwnProvince(province) {
+  return (
+    state.ownRecord?.territoryScope === DOMESTIC_SCOPE &&
+    state.ownRecord.province === province
+  );
+}
+
+function getOwnTerritoryPlan() {
+  if (!state.ownRecord) return null;
+  return state.ownRecord.territoryScope === EXTERIOR_SCOPE
+    ? state.exteriorPlans.find(
+        (plan) => plan.seccional === state.ownRecord.exteriorSection
+      ) || null
+    : state.provincePlans.find(
+        (plan) => plan.province === state.ownRecord.province
+      ) || null;
+}
+
 function formatCedulaInput() {
   nodes.cedulaInput.value = normalizeCedula(nodes.cedulaInput.value);
 }
@@ -1659,6 +2265,7 @@ function setMessage(node, message, error = false) {
 }
 
 function setFormBusy(form, busy) {
+  form.classList.toggle("is-busy", busy);
   form.querySelectorAll("button, input, select, textarea").forEach((control) => {
     if (busy) {
       control.dataset.preBusyDisabled = String(control.disabled);
@@ -1722,6 +2329,13 @@ function normalizeProvinceLabel(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^A-Za-z]/g, "")
+    .toLowerCase();
+}
+
+function normalizeSearchValue(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
 
