@@ -83,6 +83,10 @@ test("el acceso temporal obliga a cambiar contraseña antes de consultar datos",
   const address = server.address();
   const base = `http://127.0.0.1:${address.port}`;
 
+  const home = await fetch(base, { redirect: "manual" });
+  assert.equal(home.status, 302);
+  assert.equal(home.headers.get("location"), "/index.html");
+
   const protectedSource = await fetch(`${base}/src/config.js`);
   assert.equal(protectedSource.status, 404);
   assert.equal(protectedSource.headers.get("x-powered-by"), null);
