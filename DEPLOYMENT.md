@@ -59,6 +59,8 @@ No cambie `FIELD_ENCRYPTION_KEY` después de comenzar a registrar información.
 6. Confirme que el directorio tiene cero activistas.
 7. Registre un caso controlado, compruebe dashboard, edición y exportación.
 8. Elimine el caso controlado antes de iniciar la alimentación oficial.
+9. Pruebe el autorregistro desde un teléfono y confirme que la nueva cuenta solo
+   visualiza el directorio y los indicadores de su propio territorio.
 
 ## 5. Actualizaciones
 

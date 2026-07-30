@@ -74,6 +74,20 @@ function integer(value, label, min = 0, max = 1000000) {
   return parsed;
 }
 
+function whatsappGroupUrl(value) {
+  const url = cleanText(value, 500);
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || parsed.hostname !== "chat.whatsapp.com") {
+      throw new Error();
+    }
+    return parsed.toString();
+  } catch {
+    throw badRequest("El enlace debe ser una invitacion valida de chat.whatsapp.com.");
+  }
+}
+
 function validateActivist(body) {
   const territoryScope = oneOf(cleanText(body.territoryScope, 20), TERRITORY_SCOPES, "El territorio");
   const province = cleanText(body.province, 100);
@@ -145,6 +159,7 @@ function validateProvincePlan(body) {
     provincialCoordinator: cleanText(body.provincialCoordinator, 160),
     regionalCoordinator: cleanText(body.regionalCoordinator, 160),
     macroCoordinator: cleanText(body.macroCoordinator, 160),
+    whatsappGroupUrl: whatsappGroupUrl(body.whatsappGroupUrl),
   };
 }
 
@@ -156,6 +171,7 @@ function validateExteriorPlan(body) {
     provincialCoordinator: cleanText(body.provincialCoordinator, 160),
     regionalCoordinator: cleanText(body.regionalCoordinator, 160),
     macroCoordinator: cleanText(body.macroCoordinator, 160),
+    whatsappGroupUrl: whatsappGroupUrl(body.whatsappGroupUrl),
   };
 }
 

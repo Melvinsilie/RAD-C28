@@ -53,6 +53,13 @@ function createApp({ repository, config }) {
     legacyHeaders: false,
     message: { error: "Demasiados intentos. Espere unos minutos antes de volver a intentar." },
   });
+  const registrationLimiter = rateLimit({
+    windowMs: 60 * 60_000,
+    limit: 10,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: "Se alcanzo el limite temporal de registros desde esta conexion." },
+  });
 
   const asyncRoute = (handler) => (request, response, next) =>
     Promise.resolve(handler(request, response, next)).catch(next);
@@ -85,6 +92,15 @@ function createApp({ repository, config }) {
   function requireAdmin(request, response, next) {
     if (request.user.access_role !== "admin") {
       return response.status(403).json({ error: "Esta accion requiere permisos de administrador." });
+    }
+    next();
+  }
+
+  function requireStaff(request, response, next) {
+    if (!["admin", "operator"].includes(request.user.access_role)) {
+      return response.status(403).json({
+        error: "Su cuenta solo puede consultar su territorio y actualizar su propia ficha.",
+      });
     }
     next();
   }
@@ -142,6 +158,52 @@ function createApp({ repository, config }) {
   );
 
   app.get(
+    "/api/public/catalogs",
+    asyncRoute(async (_request, response) => {
+      response.json(await repository.getPublicCatalogs());
+    })
+  );
+
+  app.post(
+    "/api/public/register",
+    registrationLimiter,
+    requireMutationHeader,
+    asyncRoute(async (request, response) => {
+      const username = validateUsername(request.body?.username);
+      const password = validatePassword(request.body?.password);
+      const activist = validateActivist({
+        ...request.body,
+        status: "Pendiente de activación",
+        role: "Activista",
+        responseWindow: "2 horas+",
+        availability: "Mañana",
+        tookInduction: false,
+        c28Registered: false,
+        pollSquad: false,
+        skills: [],
+        networks: {},
+        notes: "",
+      });
+      const { userId, activistId } = await repository.registerActivistAccount({
+        username,
+        passwordHash: await bcrypt.hash(password, 12),
+        activist,
+      });
+      await issueSession(userId, request, response);
+      await repository.audit(
+        userId,
+        "self_register",
+        "activist",
+        activistId,
+        { territoryScope: activist.territoryScope },
+        request
+      );
+      const user = await repository.findUserById(userId);
+      response.status(201).json({ user: repository.publicUser(user) });
+    })
+  );
+
+  app.get(
     "/api/auth/me",
     asyncRoute(authenticate),
     asyncRoute(async (request, response) => {
@@ -188,12 +250,13 @@ function createApp({ repository, config }) {
   app.get(
     "/api/state",
     asyncRoute(async (_request, response) => {
-      response.json(await repository.loadState());
+      response.json(await repository.loadState(_request.user));
     })
   );
 
   app.post(
     "/api/activists",
+    requireStaff,
     asyncRoute(async (request, response) => {
       const payload = validateActivist(request.body);
       const id = await repository.writeActivist(payload, request.user.id);
@@ -207,7 +270,11 @@ function createApp({ repository, config }) {
     asyncRoute(async (request, response) => {
       const payload = validateActivist(request.body);
       const id = cleanText(request.params.id, 36);
-      await repository.writeActivist(payload, request.user.id, id);
+      const selfService = request.user.access_role === "activist";
+      if (selfService && request.user.activist_id !== id) {
+        throw Object.assign(new Error("Solo puede actualizar su propia ficha."), { status: 403 });
+      }
+      await repository.writeActivist(payload, request.user.id, id, { selfService });
       await repository.audit(request.user.id, "update", "activist", id, null, request);
       response.json({ id });
     })
@@ -215,6 +282,7 @@ function createApp({ repository, config }) {
 
   app.delete(
     "/api/activists/:id",
+    requireStaff,
     asyncRoute(async (request, response) => {
       const id = cleanText(request.params.id, 36);
       await repository.deleteActivist(id);
@@ -225,6 +293,7 @@ function createApp({ repository, config }) {
 
   app.put(
     "/api/plans/provinces/:province",
+    requireStaff,
     asyncRoute(async (request, response) => {
       const province = cleanText(decodeURIComponent(request.params.province), 100);
       await repository.updateProvince(province, validateProvincePlan(request.body));
@@ -235,6 +304,7 @@ function createApp({ repository, config }) {
 
   app.put(
     "/api/plans/exterior/:seccional",
+    requireStaff,
     asyncRoute(async (request, response) => {
       const seccional = cleanText(decodeURIComponent(request.params.seccional), 100);
       await repository.updateExterior(seccional, validateExteriorPlan(request.body));
@@ -245,6 +315,7 @@ function createApp({ repository, config }) {
 
   app.put(
     "/api/coordination",
+    requireStaff,
     asyncRoute(async (request, response) => {
       const payload = {
         nationalCoordinator: cleanText(request.body?.nationalCoordinator, 160),
@@ -261,6 +332,7 @@ function createApp({ repository, config }) {
 
   app.post(
     "/api/exports/log",
+    requireStaff,
     asyncRoute(async (request, response) => {
       const format = cleanText(request.body?.format, 20);
       const report = cleanText(request.body?.report, 80);

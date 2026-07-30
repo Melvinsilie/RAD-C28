@@ -42,6 +42,9 @@ const state = {
   catalogs: { organizationalRoles: [], skills: [] },
   users: [],
   audits: [],
+  ownRecord: null,
+  viewMode: "national",
+  publicCatalogs: { provinces: [], exteriorSections: [] },
 };
 
 const nodes = Object.fromEntries(
@@ -51,6 +54,33 @@ const nodes = Object.fromEntries(
     "loginUsername",
     "loginPassword",
     "loginMessage",
+    "createActivistAccountBtn",
+    "selfRegistrationDialog",
+    "selfRegistrationForm",
+    "closeSelfRegistrationBtn",
+    "cancelSelfRegistrationBtn",
+    "selfUsername",
+    "selfPassword",
+    "selfConfirmPassword",
+    "selfCedula",
+    "selfFirstName",
+    "selfLastName",
+    "selfPhone",
+    "selfWhatsapp",
+    "selfEmail",
+    "selfAgeRange",
+    "selfSex",
+    "selfTerritoryScope",
+    "selfProvinceField",
+    "selfProvince",
+    "selfExteriorField",
+    "selfExteriorSection",
+    "selfMunicipality",
+    "selfDistrictField",
+    "selfDistrict",
+    "selfExteriorDistrictField",
+    "selfExteriorDistrict",
+    "selfRegistrationMessage",
     "passwordDialog",
     "passwordForm",
     "passwordDialogHelp",
@@ -121,6 +151,7 @@ const nodes = Object.fromEntries(
     "recordTableBody",
     "recordCount",
     "databaseStatus",
+    "territoryWhatsappLink",
     "searchInput",
     "filterProvince",
     "filterRole",
@@ -166,6 +197,14 @@ async function initializeSession() {
 
 function attachEvents() {
   nodes.loginForm.addEventListener("submit", handleLogin);
+  nodes.createActivistAccountBtn.addEventListener("click", openSelfRegistration);
+  nodes.closeSelfRegistrationBtn.addEventListener("click", () => nodes.selfRegistrationDialog.close());
+  nodes.cancelSelfRegistrationBtn.addEventListener("click", () => nodes.selfRegistrationDialog.close());
+  nodes.selfRegistrationForm.addEventListener("submit", handleSelfRegistration);
+  nodes.selfTerritoryScope.addEventListener("change", syncSelfRegistrationTerritory);
+  nodes.selfCedula.addEventListener("input", () => {
+    nodes.selfCedula.value = normalizeCedula(nodes.selfCedula.value);
+  });
   nodes.passwordForm.addEventListener("submit", handlePasswordChange);
   nodes.cancelPasswordBtn.addEventListener("click", () => nodes.passwordDialog.close());
   nodes.resetPasswordForm.addEventListener("submit", handleResetUserPassword);
@@ -251,6 +290,85 @@ async function handleLogin(event) {
   }
 }
 
+async function openSelfRegistration() {
+  nodes.selfRegistrationForm.reset();
+  setMessage(nodes.selfRegistrationMessage, "");
+  try {
+    if (!state.publicCatalogs.provinces.length) {
+      state.publicCatalogs = await api("/api/public/catalogs", {
+        allowUnauthorized: true,
+      });
+    }
+    populateSelect(
+      nodes.selfProvince,
+      state.publicCatalogs.provinces.map((item) => item.province)
+    );
+    populateSelect(
+      nodes.selfExteriorSection,
+      state.publicCatalogs.exteriorSections.map((item) => item.seccional),
+      true
+    );
+    populateSelect(nodes.selfAgeRange, AGE_RANGE_OPTIONS, true);
+    populateSelect(nodes.selfSex, SEX_OPTIONS, true);
+    nodes.selfTerritoryScope.value = DOMESTIC_SCOPE;
+    syncSelfRegistrationTerritory();
+    nodes.selfRegistrationDialog.showModal();
+  } catch (error) {
+    setMessage(nodes.loginMessage, error.message, true);
+  }
+}
+
+function syncSelfRegistrationTerritory() {
+  const exterior = nodes.selfTerritoryScope.value === EXTERIOR_SCOPE;
+  nodes.selfProvinceField.classList.toggle("hidden", exterior);
+  nodes.selfExteriorField.classList.toggle("hidden", !exterior);
+  nodes.selfDistrictField.classList.toggle("hidden", exterior);
+  nodes.selfExteriorDistrictField.classList.toggle("hidden", !exterior);
+  nodes.selfProvince.required = !exterior;
+  nodes.selfExteriorSection.required = exterior;
+}
+
+async function handleSelfRegistration(event) {
+  event.preventDefault();
+  if (nodes.selfPassword.value !== nodes.selfConfirmPassword.value) {
+    return setMessage(nodes.selfRegistrationMessage, "Las contraseñas no coinciden.", true);
+  }
+  setFormBusy(nodes.selfRegistrationForm, true);
+  setMessage(nodes.selfRegistrationMessage, "");
+  try {
+    const exterior = nodes.selfTerritoryScope.value === EXTERIOR_SCOPE;
+    const { user } = await api("/api/public/register", {
+      method: "POST",
+      allowUnauthorized: true,
+      body: {
+        username: nodes.selfUsername.value,
+        password: nodes.selfPassword.value,
+        cedula: nodes.selfCedula.value,
+        firstName: nodes.selfFirstName.value,
+        lastName: nodes.selfLastName.value,
+        phone: nodes.selfPhone.value,
+        whatsapp: nodes.selfWhatsapp.value,
+        email: nodes.selfEmail.value,
+        ageRange: nodes.selfAgeRange.value,
+        sex: nodes.selfSex.value,
+        territoryScope: nodes.selfTerritoryScope.value,
+        province: exterior ? "" : nodes.selfProvince.value,
+        exteriorSection: exterior ? nodes.selfExteriorSection.value : "",
+        exteriorCircunscription: exterior ? nodes.selfExteriorDistrict.value : "",
+        municipality: nodes.selfMunicipality.value,
+        districtMunicipal: exterior ? "" : nodes.selfDistrict.value,
+      },
+    });
+    nodes.selfRegistrationDialog.close();
+    await acceptAuthenticatedUser(user);
+    toast("Su cuenta de activista fue creada correctamente.");
+  } catch (error) {
+    setMessage(nodes.selfRegistrationMessage, error.message, true);
+  } finally {
+    setFormBusy(nodes.selfRegistrationForm, false);
+  }
+}
+
 async function acceptAuthenticatedUser(user) {
   state.currentUser = user;
   document.body.classList.add("is-authenticated");
@@ -258,9 +376,17 @@ async function acceptAuthenticatedUser(user) {
   nodes.sidebarUserName.textContent = user.fullName;
   nodes.sidebarUserRole.textContent =
     user.accessRole === "admin" ? "Administrador" : user.organizationalRole || "Acceso operativo";
+  const isActivist = user.accessRole === "activist";
+  document.querySelectorAll(".staff-only").forEach((node) => {
+    node.hidden = isActivist;
+  });
   document.querySelectorAll(".admin-only").forEach((node) => {
     node.hidden = user.accessRole !== "admin";
   });
+  const registrationLabel = document.querySelector('a[href="#registro"] .side-link-label');
+  const databaseLabel = document.querySelector('a[href="#base"] .side-link-label');
+  if (registrationLabel) registrationLabel.textContent = isActivist ? "Mi perfil" : "Registro";
+  if (databaseLabel) databaseLabel.textContent = isActivist ? "Mi territorio" : "Directorio";
 
   if (user.mustChangePassword) {
     openPasswordDialog(true);
@@ -328,8 +454,10 @@ async function loadApplicationState() {
   try {
     const snapshot = await api("/api/state");
     Object.assign(state, snapshot);
+    configureAccessView();
     renderStaticOptions();
     renderAll();
+    mapModel = null;
     await mountProvinceMap();
     if (state.currentUser.accessRole === "admin") await loadUsers();
     activateView(window.location.hash || DEFAULT_VIEW_HASH);
@@ -353,6 +481,74 @@ function renderStaticOptions() {
   renderSkillChips();
   renderNetworkCards();
   clearForm();
+}
+
+function configureAccessView() {
+  const activist = state.currentUser?.accessRole === "activist";
+  [
+    nodes.statusInput,
+    document.getElementById("provCoordinatorInput"),
+    document.getElementById("regionalCoordinatorInput"),
+    document.getElementById("macroCoordinatorInput"),
+    document.getElementById("inductionInput"),
+    document.getElementById("inductionDateInput"),
+    document.getElementById("c28Input"),
+  ].forEach((control) => {
+    if (control) control.disabled = activist;
+  });
+  nodes.clearFormBtn.hidden = activist;
+  document.getElementById("saveRecordBtn").textContent = activist
+    ? "Actualizar mi perfil"
+    : "Guardar registro";
+
+  const dashboardView = document.getElementById("dashboard");
+  const registrationView = document.getElementById("registro");
+  const databaseView = document.getElementById("base");
+  const heroTitle = document.querySelector(".hero-copy h2");
+  const heroText = document.querySelector(".hero-text");
+  const registrationHeading = document.querySelector("#registro .section-intro h3");
+  const databaseHeading = document.querySelector("#base .panel-head h3");
+  const actionHeading = document.querySelector("#base thead th:last-child");
+
+  if (activist) {
+    dashboardView.dataset.moduleTitle = "Avances de mi territorio";
+    dashboardView.dataset.moduleSummary =
+      "Indicadores agregados de su provincia o seccional, sin datos privados de otros integrantes.";
+    dashboardView.dataset.modulePill = "Vista territorial";
+    registrationView.dataset.moduleTitle = "Mi perfil de activista";
+    registrationView.dataset.moduleSummary =
+      "Actualice su contacto, disponibilidad, capacidades y redes sociales.";
+    registrationView.dataset.modulePill = "Perfil personal";
+    databaseView.dataset.moduleTitle = "Directorio de mi territorio";
+    databaseView.dataset.moduleSummary =
+      "Consulte integrantes, roles y redes públicas de su equipo territorial.";
+    databaseView.dataset.modulePill = "Directorio territorial";
+    heroTitle.textContent = "Organización y avances de mi territorio.";
+    heroText.textContent =
+      "Consulte la cobertura agregada de su equipo, actualice su perfil y conecte con las redes de los integrantes de su territorio.";
+    registrationHeading.textContent = "Mantenga actualizada su ficha y capacidad de activación.";
+    databaseHeading.textContent = "Integrantes y redes de mi equipo territorial";
+    actionHeading.textContent = "Acceso";
+  } else {
+    dashboardView.dataset.moduleTitle = "Centro nacional de operaciones RAD-C28";
+    dashboardView.dataset.moduleSummary =
+      "Indicadores de registro, cobertura territorial, formación y capacidad de respuesta.";
+    dashboardView.dataset.modulePill = "Resumen nacional";
+    registrationView.dataset.moduleTitle = "Alta y edicion de activistas RAD-C28";
+    registrationView.dataset.moduleSummary =
+      "Registra identidad, estructura territorial, redes, disponibilidad y capacidades operativas.";
+    registrationView.dataset.modulePill = "Registro operativo";
+    databaseView.dataset.moduleTitle = "Consulta, filtros y exportación de registros";
+    databaseView.dataset.moduleSummary =
+      "Consulta integrantes, abre fichas para edición y genera exportaciones autorizadas.";
+    databaseView.dataset.modulePill = "Directorio activo";
+    heroTitle.textContent = "Gestión nacional de activistas y estructura territorial.";
+    heroText.textContent =
+      "Centraliza el registro, la organización territorial, la formación y la capacidad de activación de la Red de Activistas Digitales RAD-C28.";
+    registrationHeading.textContent = "Incorporación y actualización de integrantes de RAD-C28.";
+    databaseHeading.textContent = "Consulta y seguimiento de integrantes de RAD-C28";
+    actionHeading.textContent = "Acciones";
+  }
 }
 
 function renderAll() {
@@ -438,10 +634,14 @@ function collectFormData() {
 async function refreshState() {
   const snapshot = await api("/api/state");
   Object.assign(state, snapshot);
+  configureAccessView();
   renderAll();
+  mapModel = null;
+  await mountProvinceMap();
 }
 
 function findRecordByCedula() {
+  if (state.currentUser?.accessRole === "activist") return;
   const cedula = normalizeCedula(nodes.cedulaInput.value);
   if (cedula.length !== 13) {
     nodes.autofillStatus.textContent = "Cédula incompleta";
@@ -461,7 +661,10 @@ function loadRecordIntoForm(record) {
   nodes.recordId.value = record.id;
   nodes.territoryScopeInput.value = record.territoryScope;
   syncTerritoryScopeUI();
-  nodes.adminRoleSection.classList.remove("hidden");
+  nodes.adminRoleSection.classList.toggle(
+    "hidden",
+    state.currentUser?.accessRole === "activist"
+  );
   const values = {
     cedulaInput: record.cedula,
     firstNameInput: record.firstName,
@@ -504,6 +707,11 @@ function loadRecordIntoForm(record) {
 }
 
 function clearForm() {
+  if (state.currentUser?.accessRole === "activist" && state.ownRecord) {
+    loadRecordIntoForm(state.ownRecord);
+    nodes.autofillStatus.textContent = "Mi ficha de activista";
+    return;
+  }
   nodes.activistForm.reset();
   nodes.recordId.value = "";
   nodes.adminRoleSection.classList.add("hidden");
@@ -777,6 +985,14 @@ function renderPlanCard(plan, exterior) {
           )
           .join("")}
       </div>
+      <div class="planner-input planner-whatsapp-field">
+        <label>Enlace del grupo de WhatsApp
+          <input type="url" value="${escapeAttribute(plan.whatsappGroupUrl || "")}"
+            placeholder="https://chat.whatsapp.com/..."
+            data-plan-key="${escapeAttribute(name)}" data-plan-field="whatsappGroupUrl"
+            data-plan-scope="${exterior ? "exterior" : "province"}" />
+        </label>
+      </div>
       <div class="planner-macro-metrics">
         <div class="planner-macro-stat"><span>Base</span><strong>${summary.activists}/${summary.targetActivists}</strong></div>
         <div class="planner-macro-stat"><span>Avance</span><strong>${summary.score}%</strong></div>
@@ -850,25 +1066,37 @@ function filteredRecords() {
 
 function renderRecordTable() {
   const records = filteredRecords();
+  const activistView = state.currentUser?.accessRole === "activist";
   nodes.recordCount.textContent = `${records.length} registros`;
   nodes.databaseStatus.textContent = records.length
-    ? "Información sincronizada con la base central."
+    ? activistView
+      ? "Directorio limitado a los integrantes de su territorio."
+      : "Información sincronizada con la base central."
     : "No hay registros que coincidan con los filtros.";
+  const ownPlan =
+    state.provincePlans[0] || state.exteriorPlans[0] || null;
+  const groupUrl = activistView ? ownPlan?.whatsappGroupUrl || "" : "";
+  nodes.territoryWhatsappLink.hidden = !groupUrl;
+  nodes.territoryWhatsappLink.href = groupUrl || "#";
   nodes.recordTableBody.innerHTML = records.length
     ? records
         .map(
           (record) => `
             <tr>
-              <td class="record-name"><strong>${escapeHtml(record.firstName)} ${escapeHtml(record.lastName)}</strong><span>${escapeHtml(record.cedula)}</span></td>
+              <td class="record-name"><strong>${escapeHtml(record.firstName)} ${escapeHtml(record.lastName)}</strong><span>${activistView ? escapeHtml(formatNetworkHandles(record.networks)) : escapeHtml(record.cedula)}</span></td>
               <td><strong>${escapeHtml(territoryName(record))}</strong><span class="table-muted">${escapeHtml(record.municipality || "")}</span></td>
               <td>${escapeHtml(record.role)}</td><td>${escapeHtml(record.status)}</td>
               <td>${formatCompact(totalFollowers(record.networks))}</td>
               <td>${record.tookInduction ? "Sí" : "No"}</td><td>${record.c28Registered ? "Sí" : "No"}</td>
               <td>${escapeHtml(record.responseWindow)}</td>
-              <td><div class="row-actions">
-                <button class="ghost-button" data-edit="${record.id}" type="button">Editar</button>
-                <button class="danger-button" data-delete="${record.id}" type="button">Eliminar</button>
-              </div></td>
+              <td>${
+                activistView
+                  ? '<span class="table-muted">Solo lectura</span>'
+                  : `<div class="row-actions">
+                      <button class="ghost-button" data-edit="${record.id}" type="button">Editar</button>
+                      <button class="danger-button" data-delete="${record.id}" type="button">Eliminar</button>
+                    </div>`
+              }</td>
             </tr>`
         )
         .join("")
@@ -1215,7 +1443,15 @@ function renderNetworkCards() {
 
 function activateView(hash, options = {}) {
   const targetHash = hash?.startsWith("#") ? hash : DEFAULT_VIEW_HASH;
-  if (targetHash === "#usuarios" && state.currentUser?.accessRole !== "admin") return;
+  if (
+    state.currentUser?.accessRole === "activist" &&
+    ["#estructura", "#usuarios"].includes(targetHash)
+  ) {
+    return activateView(DEFAULT_VIEW_HASH, { updateHash: true });
+  }
+  if (targetHash === "#usuarios" && state.currentUser?.accessRole !== "admin") {
+    return activateView(DEFAULT_VIEW_HASH, { updateHash: true });
+  }
   if (options.updateHash && window.location.hash !== targetHash) {
     window.location.hash = targetHash;
     return;
@@ -1424,8 +1660,22 @@ function setMessage(node, message, error = false) {
 
 function setFormBusy(form, busy) {
   form.querySelectorAll("button, input, select, textarea").forEach((control) => {
-    control.disabled = busy;
+    if (busy) {
+      control.dataset.preBusyDisabled = String(control.disabled);
+      control.disabled = true;
+    } else {
+      control.disabled = control.dataset.preBusyDisabled === "true";
+      delete control.dataset.preBusyDisabled;
+    }
   });
+}
+
+function formatNetworkHandles(networks) {
+  const labels = Object.fromEntries(NETWORK_CONFIG.map((item) => [item.key, item.label]));
+  const active = Object.entries(networks || {})
+    .filter(([, network]) => network.active && network.handle)
+    .map(([key, network]) => `${labels[key] || key}: ${network.handle}`);
+  return active.length ? active.join(" · ") : "Sin redes registradas";
 }
 
 function toast(message, kind = "success") {

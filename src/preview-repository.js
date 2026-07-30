@@ -102,6 +102,7 @@ function createPreviewRepository({ passwordHash }) {
     provincialCoordinator: "",
     regionalCoordinator: "",
     macroCoordinator: "",
+    whatsappGroupUrl: "",
   }));
   const exteriorPlans = EXTERIOR.map(([seccional, zone]) => ({
     seccional,
@@ -113,6 +114,7 @@ function createPreviewRepository({ passwordHash }) {
     provincialCoordinator: "",
     regionalCoordinator: "",
     macroCoordinator: "",
+    whatsappGroupUrl: "",
   }));
   const nationalCoordination = {
     nationalCoordinator: "",
@@ -128,6 +130,10 @@ function createPreviewRepository({ passwordHash }) {
     fullName: row.full_name,
     accessRole: row.access_role,
     organizationalRole: row.organizational_role || "",
+    activistId: row.activist_id || null,
+    territoryScope: row.activist_territory_scope || null,
+    province: row.activist_province || null,
+    exteriorSection: row.activist_exterior_section || null,
     active: Boolean(row.active),
     mustChangePassword: Boolean(row.must_change_password),
     lastLoginAt: row.last_login_at,
@@ -165,24 +171,91 @@ function createPreviewRepository({ passwordHash }) {
       user.must_change_password = false;
       sessions.clear();
     },
-    async loadState() {
-      return structuredClone({
+    async getPublicCatalogs() {
+      return {
+        provinces: provincePlans.map(({ province, region, macroRegion }) => ({
+          province,
+          region,
+          macroRegion,
+        })),
+        exteriorSections: exteriorPlans.map(({ seccional, zone, macroRegion }) => ({
+          seccional,
+          zone,
+          macroRegion,
+        })),
+      };
+    },
+    async loadState(viewer = null) {
+      const snapshot = {
         nationalCoordination,
         provincePlans,
         exteriorPlans,
         records,
         catalogs: { organizationalRoles: ROLES, skills: SKILLS },
+      };
+      if (viewer?.access_role !== "activist") return structuredClone(snapshot);
+      const ownRecord = records.find((record) => record.userId === viewer.id);
+      if (!ownRecord) throw Object.assign(new Error("Ficha no vinculada."), { status: 403 });
+      const sameTerritory = records.filter((record) =>
+        ownRecord.territoryScope === "exterior"
+          ? record.territoryScope === "exterior" &&
+            record.exteriorSection === ownRecord.exteriorSection
+          : record.territoryScope === "provincia" && record.province === ownRecord.province
+      );
+      const anonymized = sameTerritory.map((record) => ({
+        ...record,
+        id: "",
+        userId: undefined,
+        cedula: "",
+        phone: "",
+        whatsapp: "",
+        email: "",
+        notes: "",
+        networks: record.networks,
+      }));
+      return structuredClone({
+        nationalCoordination: {},
+        provincePlans:
+          ownRecord.territoryScope === "provincia"
+            ? provincePlans.filter((plan) => plan.province === ownRecord.province)
+            : [],
+        exteriorPlans:
+          ownRecord.territoryScope === "exterior"
+            ? exteriorPlans.filter((plan) => plan.seccional === ownRecord.exteriorSection)
+            : [],
+        records: anonymized,
+        ownRecord,
+        catalogs: snapshot.catalogs,
+        viewMode: "territory",
       });
     },
-    async writeActivist(payload, actorId, existingId = null) {
+    async writeActivist(payload, actorId, existingId = null, options = {}) {
       const now = new Date().toISOString();
       const id = existingId || crypto.randomUUID();
       const existingIndex = records.findIndex((record) => record.id === id);
       const duplicate = records.find((record) => record.cedula === payload.cedula && record.id !== id);
       if (duplicate) throw Object.assign(new Error("La cédula ya existe."), { status: 409 });
+      const protectedValues =
+        options.selfService && existingIndex >= 0
+          ? {
+              status: records[existingIndex].status,
+              role: records[existingIndex].role,
+              provincialCoordinator: records[existingIndex].provincialCoordinator,
+              regionalCoordinator: records[existingIndex].regionalCoordinator,
+              macroCoordinator: records[existingIndex].macroCoordinator,
+              tookInduction: records[existingIndex].tookInduction,
+              inductionDate: records[existingIndex].inductionDate,
+              c28Registered: records[existingIndex].c28Registered,
+            }
+          : {};
+      if (options.selfService && records[existingIndex]?.userId !== actorId) {
+        throw Object.assign(new Error("Solo puede actualizar su propia ficha."), { status: 403 });
+      }
       const record = {
         ...payload,
+        ...protectedValues,
         id,
+        userId: existingIndex >= 0 ? records[existingIndex].userId : null,
         createdAt: existingIndex >= 0 ? records[existingIndex].createdAt : now,
         updatedAt: now,
         createdBy: actorId,
@@ -244,6 +317,45 @@ function createPreviewRepository({ passwordHash }) {
         created_at: new Date(),
       });
       return id;
+    },
+    async registerActivistAccount(input) {
+      if (
+        users.some((user) => user.username === input.username) ||
+        records.some((record) => record.cedula === input.activist.cedula)
+      ) {
+        throw Object.assign(new Error("El usuario o la cédula ya están registrados."), {
+          status: 409,
+        });
+      }
+      const userId = crypto.randomUUID();
+      const activistId = crypto.randomUUID();
+      const user = {
+        id: userId,
+        username: input.username,
+        full_name: `${input.activist.firstName} ${input.activist.lastName}`,
+        password_hash: input.passwordHash,
+        access_role: "activist",
+        organizational_role: "Activista",
+        activist_id: activistId,
+        activist_territory_scope: input.activist.territoryScope,
+        activist_province: input.activist.province || null,
+        activist_exterior_section: input.activist.exteriorSection || null,
+        active: true,
+        must_change_password: false,
+        failed_login_attempts: 0,
+        locked_until: null,
+        created_at: new Date(),
+      };
+      const now = new Date().toISOString();
+      records.unshift({
+        ...input.activist,
+        id: activistId,
+        userId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      users.push(user);
+      return { userId, activistId };
     },
     async updateUserStatus(id, active) {
       const user = users.find((item) => item.id === id);

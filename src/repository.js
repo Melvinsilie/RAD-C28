@@ -15,6 +15,10 @@ function createRepository(pool, fields) {
       fullName: row.full_name,
       accessRole: row.access_role,
       organizationalRole: row.organizational_role || "",
+      activistId: row.activist_id || null,
+      territoryScope: row.activist_territory_scope || null,
+      province: row.activist_province || null,
+      exteriorSection: row.activist_exterior_section || null,
       active: Boolean(row.active),
       mustChangePassword: Boolean(row.must_change_password),
       lastLoginAt: asDate(row.last_login_at),
@@ -33,6 +37,7 @@ function createRepository(pool, fields) {
       provincialCoordinator: row.provincial_coordinator,
       regionalCoordinator: row.regional_coordinator,
       macroCoordinator: row.macro_coordinator,
+      whatsappGroupUrl: row.whatsapp_group_url || "",
     };
   }
 
@@ -47,6 +52,7 @@ function createRepository(pool, fields) {
       provincialCoordinator: row.provincial_coordinator,
       regionalCoordinator: row.regional_coordinator,
       macroCoordinator: row.macro_coordinator,
+      whatsappGroupUrl: row.whatsapp_group_url || "",
     };
   }
 
@@ -97,7 +103,7 @@ function createRepository(pool, fields) {
     return rows[0].id;
   }
 
-  async function loadState() {
+  async function loadState(viewer = null) {
     const [
       [provinceRows],
       [exteriorRows],
@@ -145,7 +151,10 @@ function createRepository(pool, fields) {
     });
 
     const coordination = coordinationRows[0] || {};
-    return {
+    const mappedRecords = activistRows.map((row) =>
+      mapActivist(row, networksByActivist, skillsByActivist)
+    );
+    const snapshot = {
       nationalCoordination: {
         nationalCoordinator: coordination.national_coordinator || "",
         deputyNationalCoordinator: coordination.deputy_national_coordinator || "",
@@ -155,19 +164,144 @@ function createRepository(pool, fields) {
       },
       provincePlans: provinceRows.map(mapProvince),
       exteriorPlans: exteriorRows.map(mapExterior),
-      records: activistRows.map((row) => mapActivist(row, networksByActivist, skillsByActivist)),
+      records: mappedRecords,
       catalogs: {
         organizationalRoles: roleRows.map((row) => row.name),
         skills: catalogSkillRows.map((row) => row.name),
       },
     };
+
+    if (viewer?.access_role !== "activist") return snapshot;
+
+    const ownRow = activistRows.find((row) => row.user_id === viewer.id);
+    if (!ownRow) {
+      throw Object.assign(new Error("La cuenta no tiene una ficha de activista vinculada."), {
+        status: 403,
+      });
+    }
+    const ownRecord = mapActivist(ownRow, networksByActivist, skillsByActivist);
+    const sameTerritory = (row) =>
+      ownRow.territory_scope === "exterior"
+        ? row.territory_scope === "exterior" &&
+          row.exterior_section === ownRow.exterior_section
+        : row.territory_scope === "provincia" && row.province === ownRow.province;
+    const territoryRecords = activistRows.filter(sameTerritory).map((row) => {
+      const record = mapActivist(row, networksByActivist, skillsByActivist);
+      return {
+        id: "",
+        firstName: record.firstName,
+        lastName: record.lastName,
+        cedula: "",
+        phone: "",
+        whatsapp: "",
+        email: "",
+        notes: "",
+        ageRange: "",
+        sex: "",
+        territoryScope: record.territoryScope,
+        status: record.status,
+        province: record.province,
+        exteriorSection: record.exteriorSection,
+        exteriorCircunscription: "",
+        municipality: record.municipality,
+        districtMunicipal: "",
+        region: record.region,
+        macroRegion: record.macroRegion,
+        role: record.role,
+        provincialCoordinator: "",
+        regionalCoordinator: "",
+        macroCoordinator: "",
+        tookInduction: record.tookInduction,
+        inductionDate: "",
+        c28Registered: record.c28Registered,
+        responseWindow: record.responseWindow,
+        availability: record.availability,
+        pollSquad: record.pollSquad,
+        skills: [],
+        networks: Object.fromEntries(
+          Object.entries(record.networks).map(([key, network]) => [
+            key,
+            {
+              handle: network.handle,
+              followers: network.followers,
+              active: network.active,
+            },
+          ])
+        ),
+        createdAt: null,
+        updatedAt: null,
+      };
+    });
+
+    return {
+      nationalCoordination: {},
+      provincePlans:
+        ownRow.territory_scope === "provincia"
+          ? snapshot.provincePlans.filter((plan) => plan.province === ownRow.province)
+          : [],
+      exteriorPlans:
+        ownRow.territory_scope === "exterior"
+          ? snapshot.exteriorPlans.filter((plan) => plan.seccional === ownRow.exterior_section)
+          : [],
+      records: territoryRecords,
+      ownRecord,
+      catalogs: snapshot.catalogs,
+      viewMode: "territory",
+    };
   }
 
-  async function writeActivist(payload, actorId, existingId = null) {
+  async function getPublicCatalogs() {
+    const [[provinceRows], [exteriorRows]] = await Promise.all([
+      pool.query(
+        "SELECT province, region_name, macro_region FROM province_plans ORDER BY province"
+      ),
+      pool.query(
+        "SELECT seccional, zone_name, macro_region FROM exterior_plans ORDER BY seccional"
+      ),
+    ]);
+    return {
+      provinces: provinceRows.map((row) => ({
+        province: row.province,
+        region: row.region_name,
+        macroRegion: row.macro_region,
+      })),
+      exteriorSections: exteriorRows.map((row) => ({
+        seccional: row.seccional,
+        zone: row.zone_name,
+        macroRegion: row.macro_region,
+      })),
+    };
+  }
+
+  async function writeActivist(payload, actorId, existingId = null, options = {}) {
     const id = existingId || crypto.randomUUID();
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
+      if (options.selfService) {
+        const [currentRows] = await connection.query(
+          `SELECT a.*, r.name AS organizational_role
+           FROM activists a
+           LEFT JOIN organizational_roles r ON r.id = a.organizational_role_id
+           WHERE a.id = ? AND a.user_id = ? LIMIT 1`,
+          [existingId, actorId]
+        );
+        if (!currentRows.length) {
+          throw Object.assign(new Error("Solo puede actualizar su propia ficha."), { status: 403 });
+        }
+        const current = currentRows[0];
+        payload = {
+          ...payload,
+          status: current.status_name,
+          role: current.organizational_role || "Activista",
+          provincialCoordinator: current.provincial_coordinator,
+          regionalCoordinator: current.regional_coordinator,
+          macroCoordinator: current.macro_coordinator,
+          tookInduction: Boolean(current.took_induction),
+          inductionDate: asDateOnly(current.induction_date),
+          c28Registered: Boolean(current.c28_registered),
+        };
+      }
       const organizationalRoleId = await roleId(connection, payload.role);
       const [territoryRows] =
         payload.territoryScope === "exterior"
@@ -309,7 +443,8 @@ function createRepository(pool, fields) {
     const [result] = await pool.execute(
       `UPDATE province_plans SET
          planned_cells=?, unit_goal=?, provincial_goal=?,
-         provincial_coordinator=?, regional_coordinator=?, macro_coordinator=?
+         provincial_coordinator=?, regional_coordinator=?, macro_coordinator=?,
+         whatsapp_group_url=?
        WHERE province=?`,
       [
         payload.plannedCells,
@@ -318,6 +453,7 @@ function createRepository(pool, fields) {
         payload.provincialCoordinator || "",
         payload.regionalCoordinator || "",
         payload.macroCoordinator || "",
+        payload.whatsappGroupUrl || "",
         province,
       ]
     );
@@ -328,7 +464,8 @@ function createRepository(pool, fields) {
     const [result] = await pool.execute(
       `UPDATE exterior_plans SET
          circunscription_count=?, sectional_directive_goal=?, circunscription_goal=?,
-         provincial_coordinator=?, regional_coordinator=?, macro_coordinator=?
+         provincial_coordinator=?, regional_coordinator=?, macro_coordinator=?,
+         whatsapp_group_url=?
        WHERE seccional=?`,
       [
         payload.circunscriptionCount,
@@ -337,6 +474,7 @@ function createRepository(pool, fields) {
         payload.provincialCoordinator || "",
         payload.regionalCoordinator || "",
         payload.macroCoordinator || "",
+        payload.whatsappGroupUrl || "",
         seccional,
       ]
     );
@@ -361,9 +499,12 @@ function createRepository(pool, fields) {
 
   async function findUserByUsername(username) {
     const [rows] = await pool.query(
-      `SELECT u.*, r.name AS organizational_role
+      `SELECT u.*, r.name AS organizational_role,
+              a.id AS activist_id, a.territory_scope AS activist_territory_scope,
+              a.province AS activist_province, a.exterior_section AS activist_exterior_section
        FROM users u
        LEFT JOIN organizational_roles r ON r.id = u.organizational_role_id
+       LEFT JOIN activists a ON a.user_id = u.id
        WHERE u.username = ? LIMIT 1`,
       [username]
     );
@@ -372,9 +513,12 @@ function createRepository(pool, fields) {
 
   async function findUserById(id) {
     const [rows] = await pool.query(
-      `SELECT u.*, r.name AS organizational_role
+      `SELECT u.*, r.name AS organizational_role,
+              a.id AS activist_id, a.territory_scope AS activist_territory_scope,
+              a.province AS activist_province, a.exterior_section AS activist_exterior_section
        FROM users u
        LEFT JOIN organizational_roles r ON r.id = u.organizational_role_id
+       LEFT JOIN activists a ON a.user_id = u.id
        WHERE u.id = ? LIMIT 1`,
       [id]
     );
@@ -383,9 +527,12 @@ function createRepository(pool, fields) {
 
   async function listUsers() {
     const [rows] = await pool.query(
-      `SELECT u.*, r.name AS organizational_role
+      `SELECT u.*, r.name AS organizational_role,
+              a.id AS activist_id, a.territory_scope AS activist_territory_scope,
+              a.province AS activist_province, a.exterior_section AS activist_exterior_section
        FROM users u
        LEFT JOIN organizational_roles r ON r.id = u.organizational_role_id
+       LEFT JOIN activists a ON a.user_id = u.id
        ORDER BY u.active DESC, u.full_name`
     );
     return rows.map(publicUser);
@@ -416,6 +563,98 @@ function createRepository(pool, fields) {
     } catch (error) {
       if (error.code === "ER_DUP_ENTRY") {
         throw Object.assign(new Error("Ese nombre de usuario ya existe."), { status: 409 });
+      }
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async function registerActivistAccount(input) {
+    const userId = crypto.randomUUID();
+    const activistId = crypto.randomUUID();
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const organizationalRoleId = await roleId(connection, "Activista");
+      const [territoryRows] =
+        input.activist.territoryScope === "exterior"
+          ? await connection.query(
+              "SELECT zone_name AS region_name, macro_region FROM exterior_plans WHERE seccional=? LIMIT 1",
+              [input.activist.exteriorSection]
+            )
+          : await connection.query(
+              "SELECT region_name, macro_region FROM province_plans WHERE province=? LIMIT 1",
+              [input.activist.province]
+            );
+      if (!territoryRows.length) {
+        throw Object.assign(new Error("El territorio seleccionado no existe."), { status: 400 });
+      }
+      const territory = territoryRows[0];
+      await connection.execute(
+        `INSERT INTO users
+          (id, username, full_name, password_hash, access_role, organizational_role_id,
+           active, must_change_password)
+         VALUES (?, ?, ?, ?, 'activist', ?, TRUE, FALSE)`,
+        [
+          userId,
+          input.username,
+          `${input.activist.firstName} ${input.activist.lastName}`,
+          input.passwordHash,
+          organizationalRoleId,
+        ]
+      );
+      await connection.execute(
+        `INSERT INTO activists (
+           id, user_id, cedula_hash, cedula_encrypted, first_name, last_name,
+           phone_encrypted, whatsapp_encrypted, email_encrypted, age_range, sex,
+           territory_scope, status_name, province, exterior_section,
+           exterior_circunscription, municipality, district_municipal, region_name,
+           macro_region, organizational_role_id, response_window, availability,
+           notes_encrypted, created_by, updated_by
+         ) VALUES (
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente de activación', ?, ?, ?, ?,
+           ?, ?, ?, ?, '2 horas+', 'Mañana', ?, ?, ?
+         )`,
+        [
+          activistId,
+          userId,
+          fields.fingerprint(input.activist.cedula),
+          fields.encrypt(input.activist.cedula),
+          input.activist.firstName,
+          input.activist.lastName,
+          fields.encrypt(input.activist.phone),
+          fields.encrypt(input.activist.whatsapp),
+          fields.encrypt(input.activist.email),
+          input.activist.ageRange || null,
+          input.activist.sex || null,
+          input.activist.territoryScope,
+          input.activist.territoryScope === "exterior" ? null : input.activist.province,
+          input.activist.territoryScope === "exterior" ? input.activist.exteriorSection : null,
+          input.activist.territoryScope === "exterior"
+            ? input.activist.exteriorCircunscription || null
+            : null,
+          input.activist.municipality || null,
+          input.activist.territoryScope === "exterior"
+            ? null
+            : input.activist.districtMunicipal || null,
+          territory.region_name,
+          territory.macro_region,
+          organizationalRoleId,
+          fields.encrypt("Registro creado por autoservicio."),
+          userId,
+          userId,
+        ]
+      );
+      await connection.commit();
+      return { userId, activistId };
+    } catch (error) {
+      await connection.rollback();
+      if (error.code === "ER_DUP_ENTRY") {
+        throw Object.assign(
+          new Error("El usuario o la cédula ya están registrados."),
+          { status: 409 }
+        );
       }
       throw error;
     } finally {
@@ -496,10 +735,13 @@ function createRepository(pool, fields) {
 
   async function findSession(tokenHash) {
     const [rows] = await pool.query(
-      `SELECT s.id AS session_id, s.expires_at, u.*, r.name AS organizational_role
+      `SELECT s.id AS session_id, s.expires_at, u.*, r.name AS organizational_role,
+              a.id AS activist_id, a.territory_scope AS activist_territory_scope,
+              a.province AS activist_province, a.exterior_section AS activist_exterior_section
        FROM user_sessions s
        INNER JOIN users u ON u.id = s.user_id
        LEFT JOIN organizational_roles r ON r.id = u.organizational_role_id
+       LEFT JOIN activists a ON a.user_id = u.id
        WHERE s.token_hash=? AND s.expires_at > UTC_TIMESTAMP() AND u.active=TRUE
        LIMIT 1`,
       [tokenHash]
@@ -557,6 +799,7 @@ function createRepository(pool, fields) {
   return {
     publicUser,
     loadState,
+    getPublicCatalogs,
     writeActivist,
     deleteActivist,
     updateProvince,
@@ -566,6 +809,7 @@ function createRepository(pool, fields) {
     findUserById,
     listUsers,
     createUser,
+    registerActivistAccount,
     updateUserStatus,
     resetUserPassword,
     setPassword,
