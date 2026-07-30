@@ -1,52 +1,39 @@
-const http = require("node:http");
-const fs = require("node:fs");
-const path = require("node:path");
+const { config } = require("./src/config");
+const { createPool, runMigrations } = require("./src/database");
+const { createFieldCrypto } = require("./src/field-crypto");
+const { createRepository } = require("./src/repository");
+const { createApp, ensureInitialAdmin } = require("./src/app");
 
-const HOST = "127.0.0.1";
-const PORT = Number(process.env.PORT || 4173);
-const ROOT = __dirname;
+async function start() {
+  const pool = createPool(config.database);
+  await pool.query("SELECT 1");
+  await runMigrations(pool);
 
-const MIME_TYPES = {
-  ".css": "text/css; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-};
+  const repository = createRepository(pool, createFieldCrypto(config.encryptionKey));
+  const createdAdmin = await ensureInitialAdmin(repository, config);
+  await repository.cleanupSessions();
 
-const server = http.createServer((request, response) => {
-  const requestUrl = new URL(request.url, `http://${request.headers.host}`);
-  let filePath = decodeURIComponent(requestUrl.pathname);
-
-  if (filePath === "/") {
-    filePath = "/index.html";
-  }
-
-  const resolvedPath = path.join(ROOT, filePath);
-  if (!resolvedPath.startsWith(ROOT)) {
-    response.writeHead(403);
-    response.end("Forbidden");
-    return;
-  }
-
-  fs.readFile(resolvedPath, (error, content) => {
-    if (error) {
-      response.writeHead(error.code === "ENOENT" ? 404 : 500, {
-        "Content-Type": "text/plain; charset=utf-8",
-      });
-      response.end(error.code === "ENOENT" ? "Not found" : "Internal server error");
-      return;
+  const app = createApp({ repository, config });
+  const server = app.listen(config.port, config.host, () => {
+    console.log(`RAD-C28 disponible en http://${config.host}:${config.port}`);
+    if (createdAdmin) {
+      console.log(`Administrador inicial creado: ${config.initialAdmin.username}`);
+      console.log("Debe cambiar la contraseña temporal en el primer acceso.");
     }
-
-    response.writeHead(200, {
-      "Content-Type": MIME_TYPES[path.extname(resolvedPath).toLowerCase()] || "application/octet-stream",
-      "Cache-Control": "no-cache",
-    });
-    response.end(content);
   });
-});
 
-server.listen(PORT, HOST, () => {
-  console.log(`RAD-C28 disponible en http://${HOST}:${PORT}`);
+  const close = (signal) => {
+    console.log(`${signal}: cerrando RAD-C28.`);
+    server.close(async () => {
+      await pool.end();
+      process.exit(0);
+    });
+  };
+  process.once("SIGINT", () => close("SIGINT"));
+  process.once("SIGTERM", () => close("SIGTERM"));
+}
+
+start().catch((error) => {
+  console.error(`No se pudo iniciar RAD-C28: ${error.message}`);
+  process.exitCode = 1;
 });

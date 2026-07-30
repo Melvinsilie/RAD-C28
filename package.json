@@ -1,16 +1,37 @@
 {
   "name": "plataforma-rad-c28",
-  "version": "1.0.0",
-  "description": "Plataforma web estatica para la Red de Activistas Digitales del Proyecto presidencial C28.",
-  "main": "app.js",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Centro de operaciones, registro y seguimiento territorial de RAD-C28.",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "preview": "node scripts/preview.js",
+    "migrate": "node scripts/migrate.js",
+    "check": "node --check server.js && node --check src/app.js && node --check src/database.js && node --check src/repository.js && node --check src/preview-repository.js && node --check src/territorial-catalog.js && node --check src/territory-progress.js && node --check scripts/preview.js && node --check public/app.js && html-validate public/index.html",
+    "test": "node --test"
   },
-  "keywords": [],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "rad-c28",
+    "express",
+    "mysql"
+  ],
   "author": "",
-  "license": "ISC",
+  "license": "UNLICENSED",
   "dependencies": {
-    "express": "^5.2.1"
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "mysql2": "^3.15.3"
+  },
+  "devDependencies": {
+    "html-validate": "^11.4.0"
   }
 }

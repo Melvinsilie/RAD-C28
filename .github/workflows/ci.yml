@@ -1,0 +1,36 @@
+name: Verificacion RAD-C28
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Obtener codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Validar codigo e interfaz
+        run: npm run check
+
+      - name: Ejecutar pruebas
+        run: npm test
+
+      - name: Revisar dependencias
+        run: npm audit --audit-level=moderate
