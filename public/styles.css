@@ -1544,6 +1544,7 @@ form.is-busy textarea:disabled {
 }
 
 .ring {
+  position: relative;
   display: grid;
   place-items: center;
   width: 68px;
@@ -1554,14 +1555,20 @@ form.is-busy textarea:disabled {
 
 .ring::after {
   content: "";
-  width: 48px;
-  height: 48px;
+  position: absolute;
+  inset: 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
 }
 
 .ring span {
   position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  text-align: center;
   font-weight: 700;
 }
 
