@@ -1,21 +1,83 @@
-# Plataforma RAD-C28
+# Centro de Operaciones RAD-C28
 
-Plataforma web estatica para la Red de Activistas Digitales del Proyecto presidencial C28.
+Aplicación web para el registro de activistas, la organización territorial, la
+formación y el seguimiento de la capacidad operativa de RAD-C28.
 
-## Que incluye
+## Funcionalidades
 
-- Registro de activistas con cedula, estructura territorial, induccion y estado en C28.
-- Captura de redes sociales, seguidores y capacidades operativas.
-- Dashboard ejecutivo con alcance potencial, escuadra de sondeos y respuesta temprana.
-- Mapa provincial de Republica Dominicana con semaforo rojo, amarillo y verde.
-- Base de datos local con filtros y exportacion a CSV, JSON y resumen territorial.
+- Inicio de sesión mediante cuentas individuales y sesiones revocables.
+- Cambio obligatorio de la contraseña temporal en el primer acceso.
+- Perfiles de acceso `admin` y `operator`.
+- Roles organizativos independientes de los permisos del sistema.
+- Gestión de usuarios, activación, desactivación y restablecimiento de contraseña.
+- Registro, edición, consulta y eliminación de activistas.
+- Cédula, contacto, usuarios de redes y notas cifrados con AES-256-GCM.
+- Directorio con filtros y exportación a CSV o JSON.
+- Metas provinciales, seccionales del exterior y coordinación nacional.
+- Dashboard y mapa alimentados exclusivamente por MySQL/MariaDB.
+- Auditoría de accesos y operaciones críticas.
+- Base inicial sin activistas ni valores de demostración.
 
-## Como abrirla
+## Requisitos
 
-1. Abre una terminal en esta carpeta.
-2. Ejecuta `node server.js`.
-3. Entra a `http://127.0.0.1:4173`.
+- Node.js 20 o superior.
+- MySQL 8 o MariaDB compatible.
+- Una base vacía y un usuario con permisos para crear y modificar tablas.
 
-## Nota
+## Instalación local
 
-El autocompletado por cedula funciona con un directorio local demo y con los registros ya guardados en el navegador. La estructura esta lista para conectarse luego a un padron o API externa.
+1. Instale las dependencias:
+
+   ```bash
+   npm install
+   ```
+
+2. Copie `.env.example` como `.env` y complete las credenciales.
+
+3. Genere una clave de cifrado:
+
+   ```bash
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+   ```
+
+4. Ejecute las migraciones:
+
+   ```bash
+   npm run migrate
+   ```
+
+5. Inicie la aplicación:
+
+   ```bash
+   npm start
+   ```
+
+6. Abra `http://127.0.0.1:4173`.
+
+La primera ejecución crea el administrador definido por `ADMIN_USERNAME`,
+`ADMIN_PASSWORD` y `ADMIN_NAME`. Esa cuenta deberá cambiar su contraseña al
+iniciar sesión.
+
+## Desarrollo
+
+```bash
+npm run dev
+npm run check
+npm test
+```
+
+No utilice la base de producción para desarrollo cotidiano. Las migraciones en
+`db/migrations` permiten crear una base local con la misma estructura.
+
+## Seguridad
+
+- Nunca confirme `.env` en Git.
+- Mantenga el repositorio privado.
+- Use HTTPS en producción.
+- Configure una clave `FIELD_ENCRYPTION_KEY` distinta por entorno y respáldela
+  en un gestor seguro; perderla impide descifrar los campos protegidos.
+- Autorice MySQL remoto únicamente desde IP conocidas.
+- Revoque el acceso remoto de desarrollo al finalizar.
+- No incluya datos personales en registros de prueba, capturas o incidencias.
+
+Consulte [DEPLOYMENT.md](./DEPLOYMENT.md) para el despliegue en Hostinger.

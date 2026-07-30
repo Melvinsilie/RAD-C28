@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RAD-C28 | Centro de Operaciones</title>
+    <meta
+      name="description"
+      content="Centro de operaciones para el registro, la organización territorial y la capacidad de activación de RAD-C28."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
+      <div class="auth-card panel">
+        <img class="auth-logo" src="./Logo%20RAD-C28%20sin%20fondo.png" alt="RAD-C28" />
+        <p class="eyebrow">Acceso protegido</p>
+        <h1 id="authTitle">Centro de Operaciones RAD-C28</h1>
+        <p>Ingrese sus credenciales para acceder al registro y seguimiento territorial.</p>
+        <form id="loginForm" class="auth-form">
+          <label>
+            Usuario
+            <input id="loginUsername" name="username" type="text" autocomplete="username" required />
+          </label>
+          <label>
+            Contraseña
+            <input
+              id="loginPassword"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <button class="button button-primary" type="submit">Iniciar sesión</button>
+          <p class="form-message" id="loginMessage" role="alert"></p>
+        </form>
+      </div>
+    </section>
+
+    <dialog class="account-dialog" id="passwordDialog">
+      <form class="account-form" id="passwordForm">
+        <p class="eyebrow">Seguridad de la cuenta</p>
+        <h2>Cambiar contraseña</h2>
+        <p id="passwordDialogHelp">
+          La contraseña temporal debe reemplazarse antes de utilizar la plataforma.
+        </p>
+        <label>
+          Contraseña actual
+          <input id="currentPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <label>
+          Contraseña nueva
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="12" required />
+        </label>
+        <label>
+          Confirmar contraseña nueva
+          <input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" required />
+        </label>
+        <small>Use al menos 12 caracteres, mayúscula, minúscula, número y símbolo.</small>
+        <p class="form-message" id="passwordMessage" role="alert"></p>
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">Guardar contraseña</button>
+          <button class="button button-secondary" id="cancelPasswordBtn" type="button">Cancelar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="account-dialog" id="resetPasswordDialog">
+      <form class="account-form" id="resetPasswordForm">
+        <p class="eyebrow">Administración de acceso</p>
+        <h2>Restablecer contraseña</h2>
+        <p>La cuenta deberá cambiar esta contraseña temporal en su próximo acceso.</p>
+        <input id="resetTargetUserId" type="hidden" />
+        <label>
+          Contraseña temporal
+          <input id="resetTemporaryPassword" type="password" autocomplete="new-password" minlength="12" required />
+        </label>
+        <label>
+          Confirmar contraseña temporal
+          <input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="12" required />
+        </label>
+        <small>Use al menos 12 caracteres, mayúscula, minúscula, número y símbolo.</small>
+        <p class="form-message" id="resetPasswordMessage" role="alert"></p>
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">Restablecer</button>
+          <button class="button button-secondary" id="cancelResetPasswordBtn" type="button">Cancelar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div class="ambient ambient-c"></div>
+
+    <div class="app-shell">
+      <button
+        class="mobile-nav-toggle"
+        id="sidebarToggle"
+        type="button"
+        aria-controls="sidebarNav"
+        aria-expanded="false"
+        aria-label="Mostrar navegacion"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+      <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Cerrar menu"></button>
+
+      <div class="layout-grid">
+        <aside class="sidebar" id="sidebarNav" aria-label="Navegacion principal">
+          <div class="sidebar-brand">
+            <button
+              class="sidebar-collapse"
+              id="sidebarCollapse"
+              type="button"
+              aria-controls="sidebarNav"
+              aria-expanded="true"
+              aria-label="Ocultar menu lateral"
+            >
+              <span></span>
+              <span></span>
+            </button>
+
+            <div class="brand-stage">
+              <div class="brand-grid" aria-hidden="true"></div>
+              <div class="brand-flare flare-red" aria-hidden="true"></div>
+              <div class="brand-flare flare-blue" aria-hidden="true"></div>
+              <div class="brand-node node-a" aria-hidden="true"></div>
+              <div class="brand-node node-b" aria-hidden="true"></div>
+              <div class="brand-node node-c" aria-hidden="true"></div>
+
+              <img
+                class="brand-logo brand-logo-large"
+                src="./Logo%20RAD-C28%20sin%20fondo.png"
+                alt="Logo RAD-C28"
+              />
+
+              <div class="brand-copy">
+                <p class="eyebrow eyebrow-bright">Red de Activistas Digitales</p>
+                <h1>RAD-C28</h1>
+                <p>
+                  Registro, organización territorial y seguimiento de la
+                  capacidad operativa nacional.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <nav class="side-nav">
+            <a class="side-link" href="#dashboard">
+              <span class="side-link-kicker">01</span>
+              <span class="side-link-label">Dashboard</span>
+            </a>
+            <a class="side-link" href="#registro">
+              <span class="side-link-kicker">02</span>
+              <span class="side-link-label">Registro</span>
+            </a>
+            <a class="side-link" href="#estructura">
+              <span class="side-link-kicker">03</span>
+              <span class="side-link-label">Estructura</span>
+            </a>
+            <a class="side-link" href="#base">
+              <span class="side-link-kicker">04</span>
+              <span class="side-link-label">Directorio</span>
+            </a>
+            <a class="side-link admin-only" href="#usuarios">
+              <span class="side-link-kicker">05</span>
+              <span class="side-link-label">Usuarios</span>
+            </a>
+          </nav>
+
+          <div class="sidebar-foot">
+            <p class="eyebrow eyebrow-bright">Sesión protegida</p>
+            <strong id="sidebarUserName">Usuario RAD-C28</strong>
+            <span id="sidebarUserRole">Acceso operativo</span>
+          </div>
+        </aside>
+
+        <div class="content-shell dashboard-mode">
+          <header class="content-bar panel-soft">
+            <div class="content-copy">
+              <p class="eyebrow" id="moduleEyebrow">Centro de operaciones</p>
+              <h2 class="content-title" id="moduleTitle">Plataforma nacional de activismo digital</h2>
+              <p class="content-summary" id="moduleSummary">
+                KPIs, mapa provincial, pulso operativo y embudo de activacion en un solo centro de mando.
+              </p>
+            </div>
+
+            <div class="content-pills">
+              <button class="status-pill account-button" id="changePasswordBtn" type="button">
+                Mi contraseña
+              </button>
+              <button class="status-pill account-button" id="logoutBtn" type="button">
+                Cerrar sesión
+              </button>
+              <span class="status-pill" id="moduleContextPill">Dashboard activo</span>
+            </div>
+          </header>
+
+          <main class="main-layout">
+            <section
+              class="app-view is-active"
+              id="dashboard"
+              data-module-eyebrow="Centro de operaciones"
+              data-module-title="Centro nacional de operaciones RAD-C28"
+              data-module-summary="Indicadores de registro, cobertura territorial, formación y capacidad de respuesta."
+              data-module-pill="Resumen nacional"
+            >
+        <section class="hero panel">
+          <div class="hero-copy">
+            <p class="eyebrow">Centro de Operaciones RAD-C28</p>
+            <h2>Gestión nacional de activistas y estructura territorial.</h2>
+            <p class="hero-text">
+              Centraliza el registro, la organización territorial, la formación
+              y la capacidad de activación de la Red de Activistas Digitales RAD-C28.
+            </p>
+
+            <div class="hero-actions">
+              <a class="button button-primary" href="#registro">Registrar activista</a>
+              <a class="button button-secondary" href="#base">Ver base de datos</a>
+            </div>
+
+            <div class="signal-row" id="heroSignals"></div>
+          </div>
+
+          <div class="hero-visual">
+            <div class="hero-photo-card">
+              <img
+                class="hero-photo"
+                src="./carolina-mejia-rad-c28.png"
+                alt="Carolina Mejia RAD-C28"
+              />
+            </div>
+
+            <div class="hero-overlay">
+              <span class="overlay-label">Centro de mando</span>
+              <strong id="heroReach">0</strong>
+              <span class="overlay-subtitle">alcance potencial acumulado</span>
+            </div>
+
+            <div class="hero-float panel-soft">
+              <span>Respuesta temprana</span>
+              <strong id="heroResponse">0%</strong>
+              <small>listos para activar en 15 minutos o menos</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="metrics-grid" id="metricGrid" aria-label="Metricas principales"></section>
+
+        <section class="dashboard-grid">
+          <article class="panel map-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Mapa territorial</p>
+                <h3>Avance provincial de la RAD-C28</h3>
+              </div>
+              <span class="status-pill" id="mapStatus">Cargando mapa...</span>
+            </div>
+
+            <div class="map-shell">
+              <div class="map-canvas" id="rdMap" aria-live="polite"></div>
+
+              <aside class="province-card" id="provinceDetail" aria-label="Detalle de la provincia seleccionada">
+                <p class="eyebrow">Detalle provincial</p>
+                <h4>Selecciona una provincia</h4>
+                <p>
+                  El color refleja cobertura territorial, estructura de
+                  coordinacion, induccion, inscripcion C28 y capacidad de
+                  respuesta temprana.
+                </p>
+              </aside>
+            </div>
+
+            <div class="legend-row">
+              <span><i class="legend-swatch legend-green"></i> Verde: ritmo solido</span>
+              <span><i class="legend-swatch legend-yellow"></i> Amarillo: avance parcial</span>
+              <span><i class="legend-swatch legend-red"></i> Rojo: necesita refuerzo</span>
+            </div>
+          </article>
+
+          <article class="panel pulse-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Pulso operativo</p>
+                <h3>Capacidad territorial y preparación operativa</h3>
+              </div>
+            </div>
+
+            <div class="pulse-list" id="pulseList"></div>
+          </article>
+
+          <article class="panel readiness-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Embudo de activacion</p>
+                <h3>Desde captacion hasta capacidad de respuesta</h3>
+              </div>
+            </div>
+
+            <div class="funnel-grid" id="funnelGrid"></div>
+          </article>
+
+          <article class="panel scoreboard-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Territorios clave</p>
+                <h3>Ranking de provincias y alertas</h3>
+              </div>
+            </div>
+
+            <div class="scoreboard-table" id="provinceSummaryTable"></div>
+          </article>
+        </section>
+            </section>
+
+            <section
+              class="app-view"
+              id="registro"
+              data-module-eyebrow="Modulo de registro"
+              data-module-title="Alta y edicion de activistas RAD-C28"
+              data-module-summary="Registra identidad, estructura territorial, redes, disponibilidad y capacidades operativas."
+              data-module-pill="Registro operativo"
+              hidden
+            >
+        <section class="section-grid registration-grid">
+          <article class="panel section-intro">
+            <p class="eyebrow">Registro de activistas</p>
+            <h3>Incorporación y actualización de integrantes de RAD-C28.</h3>
+            <p>
+              La cédula permite identificar registros existentes. La provincia
+              seleccionada completa automáticamente la región y macroregión.
+            </p>
+
+            <div class="info-stack">
+              <div class="info-item">
+                <strong>Lo que capturamos</strong>
+                <span>Identidad, estructura, formacion, redes, seguidores y capacidad operativa.</span>
+              </div>
+              <div class="info-item">
+                <strong>Para que sirve</strong>
+                <span>Conocer cobertura, formación, capacidad de respuesta y alcance declarado.</span>
+              </div>
+              <div class="info-item">
+                <strong>Protección de datos</strong>
+                <span>La información de contacto y la cédula se almacenan cifradas.</span>
+              </div>
+            </div>
+          </article>
+
+          <form class="panel form-panel" id="activistForm">
+            <div class="form-head">
+              <div>
+                <p class="eyebrow">Ficha operativa</p>
+                <h3>Registro RAD-C28</h3>
+              </div>
+              <span class="status-pill" id="autofillStatus">Cedula sin validar</span>
+            </div>
+
+            <input type="hidden" id="recordId" />
+
+            <section class="form-section">
+              <h4>Identidad y contacto</h4>
+              <div class="field-grid">
+                <label>
+                  Cedula
+                  <input id="cedulaInput" name="cedula" type="text" placeholder="000-0000000-0" maxlength="13" required />
+                </label>
+                <label>
+                  Estado operativo
+                  <select id="statusInput" name="status"></select>
+                </label>
+                <label>
+                  Nombre
+                  <input id="firstNameInput" name="firstName" type="text" required />
+                </label>
+                <label>
+                  Apellido
+                  <input id="lastNameInput" name="lastName" type="text" required />
+                </label>
+                <label>
+                  Telefono
+                  <input id="phoneInput" name="phone" type="tel" placeholder="809-000-0000" />
+                </label>
+                <label>
+                  WhatsApp
+                  <input id="whatsappInput" name="whatsapp" type="tel" placeholder="809-000-0000" />
+                </label>
+                <label>
+                  Correo
+                  <input id="emailInput" name="email" type="email" placeholder="nombre@correo.com" />
+                </label>
+                <label>
+                  Rango de edad
+                  <select id="ageRangeInput" name="ageRange"></select>
+                </label>
+                <label>
+                  Sexo
+                  <select id="sexInput" name="sex"></select>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <h4>Estructura territorial</h4>
+              <div class="field-grid">
+                <label>
+                  Tipo de estructura
+                  <select id="territoryScopeInput" name="territoryScope">
+                    <option value="provincia">Territorio nacional</option>
+                    <option value="exterior">Seccional del exterior</option>
+                  </select>
+                </label>
+                <label id="provinceField">
+                  <span id="territoryNameLabel">Provincia</span>
+                  <select id="provinceInput" name="province"></select>
+                </label>
+                <label id="exteriorSectionField" class="hidden">
+                  Seccional del exterior
+                  <select id="exteriorSectionInput" name="exteriorSection"></select>
+                </label>
+                <label>
+                  Municipio o ciudad base
+                  <input id="municipalityInput" name="municipality" type="text" placeholder="Municipio, ciudad o cabecera" />
+                </label>
+                <label id="districtField">
+                  <span id="districtFieldLabel">Distrito Municipal</span>
+                  <input id="districtInput" name="districtMunicipal" type="text" placeholder="Si aplica" />
+                </label>
+                <label id="exteriorDistrictField" class="hidden">
+                  Circunscripción exterior
+                  <input id="exteriorDistrictInput" name="exteriorCircunscription" type="text" placeholder="Ej.: Circunscripción 1" />
+                </label>
+                <label>
+                  Zona o región
+                  <input id="regionInput" name="region" type="text" readonly />
+                </label>
+                <label>
+                  Sistema territorial
+                  <input id="macroRegionInput" name="macroRegion" type="text" readonly />
+                </label>
+                <label>
+                  <span id="provCoordinatorLabel">Coordinador provincial</span>
+                  <input id="provCoordinatorInput" name="provincialCoordinator" type="text" />
+                </label>
+                <label>
+                  <span id="regionalCoordinatorLabel">Coordinador regional</span>
+                  <input id="regionalCoordinatorInput" name="regionalCoordinator" type="text" />
+                </label>
+                <label>
+                  <span id="macroCoordinatorLabel">Coordinador macroregional</span>
+                  <input id="macroCoordinatorInput" name="macroCoordinator" type="text" />
+                </label>
+              </div>
+
+              <div class="role-policy-card">
+                <strong>Rol asignado al registrarse</strong>
+                <span>Activista</span>
+                <small>
+                  La estructura puede ser provincial o exterior. Superar la base minima no cambia
+                  la configuracion de grupos; solo aumenta la cobertura real.
+                </small>
+              </div>
+            </section>
+
+            <section class="form-section admin-role-section hidden" id="adminRoleSection">
+              <div class="section-inline-head">
+                <h4>Asignacion administrativa</h4>
+                <span class="mini-note">Solo para edicion de registros existentes.</span>
+              </div>
+
+              <label>
+                Rol dentro de la red
+                <select id="roleInput" name="role"></select>
+              </label>
+            </section>
+
+            <section class="form-section">
+              <h4>Formacion y capacidad de activacion</h4>
+              <div class="field-grid">
+                <label class="toggle-field">
+                  <input id="inductionInput" name="tookInduction" type="checkbox" />
+                  <span>Completo taller de induccion</span>
+                </label>
+                <label>
+                  Fecha de induccion
+                  <input id="inductionDateInput" name="inductionDate" type="date" />
+                </label>
+                <label class="toggle-field">
+                  <input id="c28Input" name="c28Registered" type="checkbox" />
+                  <span>Inscrito en la plataforma Carolina C28</span>
+                </label>
+                <label>
+                  Ventana de respuesta
+                  <select id="responseWindowInput" name="responseWindow"></select>
+                </label>
+                <label>
+                  Disponibilidad
+                  <select id="availabilityInput" name="availability"></select>
+                </label>
+                <label class="toggle-field">
+                  <input id="pollSquadInput" name="pollSquad" type="checkbox" />
+                  <span>Disponible para sondeos y votaciones digitales</span>
+                </label>
+              </div>
+
+              <div class="chip-picker" id="skillsPicker" role="group" aria-label="Capacidades operativas"></div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-inline-head">
+                <h4>Redes y alcance</h4>
+                <span class="mini-note">Indica las redes activas y seguidores aproximados por cuenta.</span>
+              </div>
+              <div class="network-grid" id="networkFields"></div>
+            </section>
+
+            <section class="form-section">
+              <h4>Observaciones</h4>
+              <label>
+                Notas estrategicas
+                <textarea
+                  id="notesInput"
+                  name="notes"
+                  rows="4"
+                  placeholder="Ej.: lidera grupos de WhatsApp, comenta temprano, puede moderar crisis, apoya con contenidos, etc."
+                ></textarea>
+              </label>
+            </section>
+
+            <div class="form-actions">
+              <button class="button button-primary" type="submit" id="saveRecordBtn">
+                Guardar registro
+              </button>
+              <button class="button button-secondary" type="button" id="clearFormBtn">
+                Limpiar formulario
+              </button>
+            </div>
+          </form>
+        </section>
+            </section>
+
+            <section
+              class="app-view"
+              id="estructura"
+              data-module-eyebrow="Modulo territorial"
+              data-module-title="Planeacion territorial y seccionales del exterior"
+              data-module-summary="Configura provincias y seccionales del exterior con bases minimas, coordinadores y cobertura sin depender del mapa."
+              data-module-pill="Estructura activa"
+              hidden
+            >
+        <section class="section-grid structure-grid">
+          <article class="panel section-intro">
+            <p class="eyebrow">Planificacion territorial</p>
+            <h3>Configura provincias y seccionales del exterior.</h3>
+            <p>
+              Cada provincia guarda metas editables para celdas municipales o
+              distritales, nombre de coordinadores y meta total de activistas. El
+              mapa usa estos objetivos para calcular el semaforo territorial.
+            </p>
+            <p>
+              Las seccionales del exterior trabajan con una directiva seccional de
+              20 activistas mas 20 adicionales por cada circunscripcion activa.
+            </p>
+            <p>
+              En esta vista, el responsable provincial dirige la provincia, el
+              supervisor regional acompaña varias provincias y el enlace
+              macroregional articula toda la macroregion.
+            </p>
+            <p>
+              Las macroregiones ahora se organizan como paneles desplegables
+              para que puedas abrir solo la estructura que quieres revisar.
+            </p>
+          </article>
+
+          <article class="panel planner-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Matriz estructural</p>
+                <h3>Provincias, exterior, bases minimas y coordinacion</h3>
+              </div>
+              <span class="status-pill">Sincronizado con la base central</span>
+            </div>
+
+            <div class="planner-table" id="provinceConfigTable"></div>
+          </article>
+        </section>
+            </section>
+
+            <section
+              class="app-view"
+              id="base"
+              data-module-eyebrow="Directorio de activistas"
+              data-module-title="Consulta, filtros y exportación de registros"
+              data-module-summary="Consulta integrantes, abre fichas para edición y genera exportaciones autorizadas."
+              data-module-pill="Directorio activo"
+              hidden
+            >
+        <section class="panel database-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Directorio central</p>
+              <h3>Consulta y seguimiento de integrantes de RAD-C28</h3>
+            </div>
+
+            <div class="action-cluster">
+              <button class="button button-secondary" id="exportTerritorialBtn" type="button">
+                Descargar resumen estructural
+              </button>
+              <button class="button button-secondary" id="exportCsvBtn" type="button">
+                Descargar CSV
+              </button>
+              <button class="button button-primary" id="exportJsonBtn" type="button">
+                Descargar JSON
+              </button>
+            </div>
+          </div>
+
+          <div class="filter-bar">
+            <label>
+              Buscar
+              <input id="searchInput" type="search" placeholder="Nombre, cédula, provincia, seccional o coordinador" />
+            </label>
+            <label>
+              Provincia o seccional
+              <select id="filterProvince"></select>
+            </label>
+            <label>
+              Rol
+              <select id="filterRole"></select>
+            </label>
+            <label>
+              Estado
+              <select id="filterStatus"></select>
+            </label>
+          </div>
+
+          <div class="database-meta">
+            <strong id="recordCount">0 registros</strong>
+            <span id="databaseStatus">Base central lista para consulta.</span>
+          </div>
+
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Activista</th>
+                  <th>Territorio</th>
+                  <th>Rol</th>
+                  <th>Estado</th>
+                  <th>Alcance</th>
+                  <th>Inducción</th>
+                  <th>C28</th>
+                  <th>Respuesta</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="recordTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+            </section>
+
+            <section
+              class="app-view"
+              id="usuarios"
+              data-module-eyebrow="Administración"
+              data-module-title="Usuarios, accesos y auditoría"
+              data-module-summary="Crea cuentas individuales, asigna roles y revisa la actividad reciente."
+              data-module-pill="Acceso administrador"
+              hidden
+            >
+              <section class="section-grid user-admin-grid">
+                <form class="panel form-panel" id="userForm">
+                  <div class="form-head">
+                    <div>
+                      <p class="eyebrow">Nueva cuenta</p>
+                      <h3>Crear usuario</h3>
+                    </div>
+                    <span class="status-pill">Cambio obligatorio</span>
+                  </div>
+                  <div class="field-grid">
+                    <label>
+                      Nombre completo
+                      <input id="userFullName" type="text" required />
+                    </label>
+                    <label>
+                      Usuario
+                      <input id="userUsername" type="text" autocomplete="off" required />
+                    </label>
+                    <label>
+                      Perfil de acceso
+                      <select id="userAccessRole">
+                        <option value="operator">Operador</option>
+                        <option value="admin">Administrador</option>
+                      </select>
+                    </label>
+                    <label>
+                      Rol organizativo
+                      <select id="userOrganizationalRole"></select>
+                    </label>
+                    <label>
+                      Contraseña temporal
+                      <input id="userTemporaryPassword" type="password" autocomplete="new-password" required />
+                    </label>
+                  </div>
+                  <p class="form-message" id="userFormMessage" role="alert"></p>
+                  <button class="button button-primary" type="submit">Crear cuenta</button>
+                </form>
+
+                <article class="panel database-panel">
+                  <div class="panel-head">
+                    <div>
+                      <p class="eyebrow">Control de acceso</p>
+                      <h3>Usuarios registrados</h3>
+                    </div>
+                  </div>
+                  <div class="table-shell">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Usuario</th>
+                          <th>Perfil</th>
+                          <th>Rol</th>
+                          <th>Estado</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="userTableBody"></tbody>
+                    </table>
+                  </div>
+                </article>
+
+                <article class="panel database-panel audit-panel">
+                  <div class="panel-head">
+                    <div>
+                      <p class="eyebrow">Trazabilidad</p>
+                      <h3>Actividad reciente</h3>
+                    </div>
+                  </div>
+                  <div class="table-shell">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Usuario</th>
+                          <th>Acción</th>
+                          <th>Elemento</th>
+                        </tr>
+                      </thead>
+                      <tbody id="auditTableBody"></tbody>
+                    </table>
+                  </div>
+                </article>
+              </section>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
