@@ -8,7 +8,7 @@
       name="description"
       content="Centro de operaciones para el registro, la organización territorial y la capacidad de activación de RAD-C28."
     />
-    <link rel="stylesheet" href="./styles.css?v=20260730.8" />
+    <link rel="stylesheet" href="./styles.css?v=20260730.9" />
   </head>
   <body>
     <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
@@ -450,9 +450,36 @@
                 <p class="eyebrow">Territorios clave</p>
                 <h3>Ranking de provincias y alertas</h3>
               </div>
+              <button
+                class="button button-secondary admin-only"
+                id="toggleNetworkReachBtn"
+                type="button"
+                aria-controls="networkReachPanel"
+                aria-expanded="false"
+              >
+                Ver alcance por red
+              </button>
             </div>
 
             <div class="scoreboard-table" id="provinceSummaryTable"></div>
+            <section
+              class="network-reach-view admin-only"
+              id="networkReachPanel"
+              aria-labelledby="networkReachTitle"
+              hidden
+            >
+              <div class="network-reach-intro">
+                <div>
+                  <p class="eyebrow">Alcance social por territorio</p>
+                  <h4 id="networkReachTitle">Seguidores activos por red y provincia</h4>
+                </div>
+                <p>
+                  El total nacional suma únicamente las redes declaradas como activas
+                  en las 32 provincias.
+                </p>
+              </div>
+              <div class="network-reach-table" id="networkReachTable"></div>
+            </section>
           </article>
         </section>
             </section>
@@ -915,6 +942,6 @@
 
     <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=20260730.7"></script>
+    <script type="module" src="./app.js?v=20260730.9"></script>
   </body>
 </html>

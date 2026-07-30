@@ -21,6 +21,58 @@ function buildNationalReach(records) {
   );
 }
 
+const SOCIAL_NETWORK_KEYS = [
+  "x",
+  "instagram",
+  "facebook",
+  "tiktok",
+  "youtube",
+  "threads",
+];
+
+function buildProvinceNetworkReach(provincePlans, records) {
+  const provinces = provincePlans.map((plan) => {
+    const networks = Object.fromEntries(
+      SOCIAL_NETWORK_KEYS.map((key) => [key, 0])
+    );
+
+    records
+      .filter(
+        (record) =>
+          record.territoryScope === "provincia" &&
+          record.province === plan.province
+      )
+      .forEach((record) => {
+        SOCIAL_NETWORK_KEYS.forEach((key) => {
+          const network = record.networks?.[key];
+          if (network?.active) {
+            networks[key] += Math.max(0, Number(network.followers) || 0);
+          }
+        });
+      });
+
+    return {
+      province: plan.province,
+      region: plan.region,
+      networks,
+      total: Object.values(networks).reduce((sum, value) => sum + value, 0),
+    };
+  });
+
+  const totals = Object.fromEntries(
+    SOCIAL_NETWORK_KEYS.map((key) => [
+      key,
+      provinces.reduce((sum, province) => sum + province.networks[key], 0),
+    ])
+  );
+
+  return {
+    provinces,
+    totals,
+    grandTotal: Object.values(totals).reduce((sum, value) => sum + value, 0),
+  };
+}
+
 function buildSexSummary(records) {
   const femaleCount = records.filter((record) => record.sex === "Femenino").length;
   const maleCount = records.filter((record) => record.sex === "Masculino").length;
@@ -103,4 +155,10 @@ function buildProvinceProgress(provincePlans, records) {
   });
 }
 
-module.exports = { buildNationalReach, buildProvinceProgress, buildSexSummary };
+module.exports = {
+  SOCIAL_NETWORK_KEYS,
+  buildNationalReach,
+  buildProvinceNetworkReach,
+  buildProvinceProgress,
+  buildSexSummary,
+};

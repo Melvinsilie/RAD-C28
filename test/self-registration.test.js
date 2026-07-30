@@ -160,6 +160,13 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
     ).role,
     "Coordinador nacional"
   );
+  assert.equal(adminStateAfterAssignment.provinceNetworkReach.provinces.length, 32);
+  assert.equal(
+    adminStateAfterAssignment.provinceNetworkReach.provinces.find(
+      (province) => province.province === "Santiago"
+    ).total,
+    0
+  );
 
   const registration = await fetch(`${base}/api/public/register`, {
     method: "POST",
@@ -191,6 +198,7 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   const state = await stateResponse.json();
   assert.equal(state.viewMode, "territory");
   assert.equal(state.nationalReach, 0);
+  assert.equal(state.provinceNetworkReach, undefined);
   assert.equal(state.provincePlans.length, 32);
   assert.equal(state.territoryProgress.length, 32);
   assert.equal(state.records.length, 1);
@@ -309,6 +317,7 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(updatedState.ownRecord.inductionDate, "2026-07-30");
   assert.equal(updatedState.ownRecord.c28Registered, true);
   assert.equal(updatedState.nationalReach, 120);
+  assert.equal(updatedState.provinceNetworkReach, undefined);
 
   const operationalUpdate = await fetch(
     `${base}/api/activists/${encodeURIComponent(updatedState.ownRecord.id)}`,

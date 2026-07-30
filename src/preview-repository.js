@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 
 const {
   buildNationalReach,
+  buildProvinceNetworkReach,
   buildProvinceProgress,
   buildSexSummary,
 } = require("./territory-progress");
@@ -245,6 +246,7 @@ function createPreviewRepository({ passwordHash }) {
       const snapshot = {
         nationalCoordination: currentNationalCoordination(),
         nationalReach: buildNationalReach(records),
+        provinceNetworkReach: buildProvinceNetworkReach(provincePlans, records),
         provincePlans,
         exteriorPlans,
         municipalityCoordinators,

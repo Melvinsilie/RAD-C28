@@ -1586,6 +1586,16 @@ form.is-busy textarea:disabled {
   overflow: auto;
 }
 
+.scoreboard-panel .panel-head {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.scoreboard-panel .panel-head .button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
 .summary-row {
   display: grid;
   gap: 12px;
@@ -1625,6 +1635,162 @@ form.is-busy textarea:disabled {
 
 .summary-row strong {
   display: block;
+}
+
+.network-reach-view[hidden],
+.scoreboard-table[hidden] {
+  display: none;
+}
+
+.network-reach-view {
+  display: grid;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.network-reach-intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: rgba(15, 127, 123, 0.07);
+  border: 1px solid rgba(15, 127, 123, 0.1);
+}
+
+.network-reach-intro h4,
+.network-reach-intro p {
+  margin: 0;
+}
+
+.network-reach-intro h4 {
+  font-size: 1.18rem;
+}
+
+.network-reach-intro > p {
+  max-width: 52ch;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.network-reach-table {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+.network-reach-table table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.network-reach-table th,
+.network-reach-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.network-reach-table thead th {
+  background: rgba(247, 244, 238, 0.98);
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.network-reach-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 210px;
+  background: rgba(255, 255, 255, 0.98);
+  text-align: left;
+}
+
+.network-reach-table thead th:first-child {
+  z-index: 2;
+  background: rgba(247, 244, 238, 0.98);
+}
+
+.network-reach-table tbody th span,
+.network-reach-table tfoot th span {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.network-reach-table td {
+  min-width: 112px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.network-reach-table tbody tr:hover th,
+.network-reach-table tbody tr:hover td {
+  background: rgba(15, 127, 123, 0.045);
+}
+
+.network-reach-table tbody tr:last-child th,
+.network-reach-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.network-reach-heading::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: var(--secondary);
+}
+
+.network-reach-heading[data-network="x"]::before {
+  background: #151f31;
+}
+
+.network-reach-heading[data-network="instagram"]::before {
+  background: #c13584;
+}
+
+.network-reach-heading[data-network="facebook"]::before {
+  background: #1877f2;
+}
+
+.network-reach-heading[data-network="tiktok"]::before {
+  background: #fe2c55;
+}
+
+.network-reach-heading[data-network="youtube"]::before {
+  background: #ff0000;
+}
+
+.network-reach-heading[data-network="threads"]::before {
+  background: #5c667a;
+}
+
+.network-reach-row-total {
+  color: var(--secondary);
+  font-weight: 800;
+}
+
+.network-reach-table tfoot th,
+.network-reach-table tfoot td {
+  border-top: 2px solid rgba(15, 127, 123, 0.22);
+  border-bottom: none;
+  background: rgba(15, 127, 123, 0.1);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.network-reach-table tfoot th:first-child {
+  background: #e9f3f0;
 }
 
 .score-chip {
@@ -2647,6 +2813,16 @@ tbody td {
 
   .summary-row {
     min-width: 860px;
+  }
+
+  .scoreboard-panel .panel-head,
+  .network-reach-intro {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .scoreboard-panel .panel-head .button {
+    width: 100%;
   }
 
   .hero-photo-card {
