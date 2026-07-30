@@ -228,6 +228,19 @@ test("los controles operativos no muestran un cursor de carga permanente", () =>
   );
 });
 
+test("los porcentajes del embudo permanecen centrados entre navegadores", () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "public", "styles.css"),
+    "utf8"
+  );
+  assert.match(css, /\.ring\s*\{[^}]*position:\s*relative/s);
+  assert.match(css, /\.ring::after\s*\{[^}]*position:\s*absolute[^}]*inset:\s*10px/s);
+  assert.match(
+    css,
+    /\.ring span\s*\{[^}]*position:\s*absolute[^}]*inset:\s*0[^}]*place-items:\s*center/s
+  );
+});
+
 test("la estructura contempla coordinacion municipal y busqueda nacional escalable", () => {
   const javascript = fs.readFileSync(
     path.join(__dirname, "..", "public", "app.js"),
