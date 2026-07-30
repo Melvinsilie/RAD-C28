@@ -7,6 +7,7 @@ const { splitStatements } = require("../src/database");
 const { MUNICIPALITIES_BY_PROVINCE } = require("../src/territorial-catalog");
 const {
   buildNationalReach,
+  buildProvinceNetworkReach,
   buildSexSummary,
 } = require("../src/territory-progress");
 const {
@@ -150,6 +151,48 @@ test("el alcance nacional suma únicamente seguidores de redes activas", () => {
   );
 });
 
+test("el alcance por red se agrupa por provincia y cierra con el total RAD-C28", () => {
+  const reach = buildProvinceNetworkReach(
+    [
+      { province: "Azua", region: "Valdesia" },
+      { province: "Santiago", region: "Cibao Norte" },
+    ],
+    [
+      {
+        territoryScope: "provincia",
+        province: "Azua",
+        networks: {
+          instagram: { followers: 1200, active: true },
+          facebook: { followers: 800, active: false },
+        },
+      },
+      {
+        territoryScope: "provincia",
+        province: "Santiago",
+        networks: {
+          instagram: { followers: 300, active: true },
+          x: { followers: 2100, active: true },
+        },
+      },
+      {
+        territoryScope: "exterior",
+        province: "",
+        networks: {
+          youtube: { followers: 9999, active: true },
+        },
+      },
+    ]
+  );
+
+  assert.equal(reach.provinces[0].networks.instagram, 1200);
+  assert.equal(reach.provinces[0].networks.facebook, 0);
+  assert.equal(reach.provinces[1].total, 2400);
+  assert.equal(reach.totals.instagram, 1500);
+  assert.equal(reach.totals.x, 2100);
+  assert.equal(reach.totals.youtube, 0);
+  assert.equal(reach.grandTotal, 3600);
+});
+
 test("el separador de migraciones conserva sentencias individuales", () => {
   assert.deepEqual(splitStatements("CREATE TABLE a (id INT);\nINSERT INTO a VALUES (1);\n"), [
     "CREATE TABLE a (id INT)",
@@ -271,6 +314,18 @@ test("centro de mando usa alcance nacional y el estado territorial puede ajustar
   );
   assert.match(css, /\.hero-insight-head\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.hero-insight-head \.score-chip\s*\{[^}]*white-space:\s*nowrap/s);
+});
+
+test("el ranking ofrece una vista administrativa de alcance por red", () => {
+  const publicRoot = path.join(__dirname, "..", "public");
+  const html = fs.readFileSync(path.join(publicRoot, "index.html"), "utf8");
+  const javascript = fs.readFileSync(path.join(publicRoot, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(publicRoot, "styles.css"), "utf8");
+  assert.match(html, /id="toggleNetworkReachBtn"[\s\S]*Ver alcance por red/);
+  assert.match(html, /id="networkReachPanel"[\s\S]*Seguidores activos por red y provincia/);
+  assert.match(javascript, /function renderProvinceNetworkReach\(\)/);
+  assert.match(javascript, /<strong>Total RAD-C28<\/strong>/);
+  assert.match(css, /\.network-reach-table\s+table\s*\{[^}]*min-width:\s*1120px/s);
 });
 
 test("la vista local permite autorregistros repetidos y producción conserva el límite", () => {

@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 
 const {
   buildNationalReach,
+  buildProvinceNetworkReach,
   buildProvinceProgress,
   buildSexSummary,
 } = require("./territory-progress");
@@ -215,10 +216,15 @@ function createRepository(pool, fields) {
     const mappedRecords = activistRows.map((row) =>
       mapActivist(row, networksByActivist, skillsByActivist)
     );
+    const mappedProvincePlans = provinceRows.map(mapProvince);
     const snapshot = {
       nationalCoordination: mapNationalCoordination(coordination, mappedRecords),
       nationalReach: buildNationalReach(mappedRecords),
-      provincePlans: provinceRows.map(mapProvince),
+      provinceNetworkReach: buildProvinceNetworkReach(
+        mappedProvincePlans,
+        mappedRecords
+      ),
+      provincePlans: mappedProvincePlans,
       exteriorPlans: exteriorRows.map(mapExterior),
       municipalityCoordinators: municipalityCoordinatorRows.map((row) => ({
         province: row.province,

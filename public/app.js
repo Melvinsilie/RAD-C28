@@ -45,6 +45,11 @@ const state = {
   nationalCoordination: {},
   municipalityCoordinators: [],
   nationalReach: null,
+  provinceNetworkReach: {
+    provinces: [],
+    totals: {},
+    grandTotal: 0,
+  },
   provincePlans: [],
   exteriorPlans: [],
   records: [],
@@ -138,6 +143,9 @@ const nodes = Object.fromEntries(
     "pulseList",
     "funnelGrid",
     "provinceSummaryTable",
+    "toggleNetworkReachBtn",
+    "networkReachPanel",
+    "networkReachTable",
     "coordinationDirectoryPanel",
     "coordinationDirectory",
     "rdMap",
@@ -272,6 +280,9 @@ function attachEvents() {
   nodes.exportCsvBtn.addEventListener("click", exportRecordsCsv);
   nodes.exportJsonBtn.addEventListener("click", exportRecordsJson);
   nodes.exportTerritorialBtn.addEventListener("click", exportTerritorialCsv);
+  nodes.toggleNetworkReachBtn.addEventListener("click", () => {
+    setNetworkReachView(nodes.networkReachPanel.hidden);
+  });
   [nodes.searchInput, nodes.filterProvince, nodes.filterRole, nodes.filterStatus].forEach((input) => {
     input.addEventListener("input", renderRecordTable);
     input.addEventListener("change", renderRecordTable);
@@ -604,6 +615,7 @@ function renderAll() {
   renderPulse();
   renderFunnel();
   renderProvinceSummary();
+  renderProvinceNetworkReach();
   renderStructure();
   renderFilters();
   renderRecordTable();
@@ -1170,6 +1182,76 @@ function renderProvinceSummary() {
   nodes.provinceSummaryTable.querySelectorAll("[data-province]").forEach((button) => {
     button.addEventListener("click", () => selectProvince(button.dataset.province));
   });
+}
+
+function renderProvinceNetworkReach() {
+  const reach = state.provinceNetworkReach || {
+    provinces: [],
+    totals: {},
+    grandTotal: 0,
+  };
+  const provinces = Array.isArray(reach.provinces) ? reach.provinces : [];
+  const headers = NETWORK_CONFIG.map(
+    ({ key, label }) =>
+      `<th scope="col" class="network-reach-heading" data-network="${escapeAttribute(key)}">${escapeHtml(label)}</th>`
+  ).join("");
+
+  nodes.networkReachTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Provincia</th>
+          ${headers}
+          <th scope="col">Total provincial</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${provinces
+          .map(
+            (province) => `
+              <tr>
+                <th scope="row">
+                  <strong>${escapeHtml(province.province)}</strong>
+                  <span>${escapeHtml(province.region || "")}</span>
+                </th>
+                ${NETWORK_CONFIG.map(({ key }) => {
+                  const value = Math.max(0, Number(province.networks?.[key]) || 0);
+                  return `<td title="${escapeAttribute(formatNumber(value))}">${formatCompact(value)}</td>`;
+                }).join("")}
+                <td class="network-reach-row-total" title="${escapeAttribute(formatNumber(province.total))}">
+                  ${formatCompact(province.total)}
+                </td>
+              </tr>`
+          )
+          .join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th scope="row">
+            <strong>Total RAD-C28</strong>
+            <span>Alcance nacional acumulado</span>
+          </th>
+          ${NETWORK_CONFIG.map(({ key }) => {
+            const value = Math.max(0, Number(reach.totals?.[key]) || 0);
+            return `<td title="${escapeAttribute(formatNumber(value))}">${formatCompact(value)}</td>`;
+          }).join("")}
+          <td title="${escapeAttribute(formatNumber(reach.grandTotal))}">
+            ${formatCompact(reach.grandTotal)}
+          </td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+function setNetworkReachView(showNetworkReach) {
+  const visible =
+    Boolean(showNetworkReach) && state.currentUser?.accessRole === "admin";
+  nodes.provinceSummaryTable.hidden = visible;
+  nodes.networkReachPanel.hidden = !visible;
+  nodes.toggleNetworkReachBtn.setAttribute("aria-expanded", String(visible));
+  nodes.toggleNetworkReachBtn.textContent = visible
+    ? "Volver al ranking"
+    : "Ver alcance por red";
 }
 
 function renderStructure() {
@@ -2224,6 +2306,10 @@ function formatCompact(value) {
     notation: Number(value) >= 1000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(Number(value) || 0);
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("es-DO").format(Number(value) || 0);
 }
 
 function formatDateTime(value) {
