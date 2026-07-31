@@ -1,5 +1,7 @@
 const crypto = require("node:crypto");
 const path = require("node:path");
+const { promisify } = require("node:util");
+const { gzip } = require("node:zlib");
 const bcrypt = require("bcryptjs");
 const cookieParser = require("cookie-parser");
 const express = require("express");
@@ -18,6 +20,7 @@ const {
 } = require("./validation");
 
 const COOKIE_NAME = "radc28_session";
+const gzipAsync = promisify(gzip);
 
 function createApp({ repository, config }) {
   const app = express();
@@ -267,6 +270,45 @@ function createApp({ repository, config }) {
     })
   );
 
+  app.post(
+    "/api/activists/me",
+    asyncRoute(async (request, response) => {
+      if (request.user.access_role !== "activist") {
+        throw Object.assign(
+          new Error("Esta acción solo está disponible para cuentas de activistas."),
+          { status: 403 }
+        );
+      }
+      if (request.user.activist_id) {
+        throw Object.assign(new Error("La cuenta ya tiene una ficha de activista."), {
+          status: 409,
+        });
+      }
+      const payload = validateActivist({
+        ...request.body,
+        status: "Pendiente de activación",
+        role: "Activista",
+        tookInduction: false,
+        inductionDate: "",
+        c28Registered: false,
+        pollSquad: false,
+      });
+      const id = await repository.writeActivist(payload, request.user.id, null, {
+        userId: request.user.id,
+      });
+      await repository.audit(
+        request.user.id,
+        "complete_profile",
+        "activist",
+        id,
+        null,
+        request
+      );
+      const user = await repository.findUserById(request.user.id);
+      response.status(201).json({ id, user: repository.publicUser(user) });
+    })
+  );
+
   app.put(
     "/api/activists/:id",
     asyncRoute(async (request, response) => {
@@ -353,6 +395,13 @@ function createApp({ repository, config }) {
           "operationsCoordinator",
           "contentCoordinator",
           "pollsCoordinator",
+          "trainingCoordinator",
+          "xCoordinator",
+          "instagramCoordinator",
+          "facebookCoordinator",
+          "tiktokCoordinator",
+          "youtubeCoordinator",
+          "threadsCoordinator",
         ].map((key) => [
           key,
           { activistId: cleanText(request.body?.[key]?.activistId, 36) },
@@ -397,14 +446,51 @@ function createApp({ repository, config }) {
   );
 
   app.post(
+    "/api/admin/database-backup",
+    requireAdmin,
+    asyncRoute(async (request, response) => {
+      const backup = await repository.exportDatabaseBackup();
+      const compressed = await gzipAsync(Buffer.from(backup.sql, "utf8"), {
+        level: 9,
+      });
+      await repository.audit(
+        request.user.id,
+        "backup",
+        "database",
+        null,
+        {
+          format: "sql.gz",
+          tableCount: backup.tableCount,
+          rowCount: backup.rowCount,
+        },
+        request
+      );
+      const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+      const filename = `rad-c28-respaldo-${timestamp}.sql.gz`;
+      response.setHeader("Content-Type", "application/gzip");
+      response.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      response.setHeader("Content-Length", compressed.length);
+      response.send(compressed);
+    })
+  );
+
+  app.post(
     "/api/users",
     requireAdmin,
     asyncRoute(async (request, response) => {
+      const accessRole = ["admin", "operator", "activist"].includes(
+        request.body?.accessRole
+      )
+        ? request.body.accessRole
+        : "operator";
       const input = {
         username: validateUsername(request.body?.username),
         fullName: cleanText(request.body?.fullName, 160),
-        accessRole: request.body?.accessRole === "admin" ? "admin" : "operator",
-        organizationalRole: cleanText(request.body?.organizationalRole, 120),
+        accessRole,
+        organizationalRole:
+          accessRole === "activist"
+            ? "Activista"
+            : cleanText(request.body?.organizationalRole, 120),
         passwordHash: await bcrypt.hash(validatePassword(request.body?.temporaryPassword), 12),
       };
       if (!input.fullName) throw badRequest("El nombre del usuario es obligatorio.");

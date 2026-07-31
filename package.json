@@ -9,7 +9,7 @@
     "dev": "node --watch server.js",
     "preview": "node scripts/preview.js",
     "migrate": "node scripts/migrate.js",
-    "check": "node --check server.js && node --check src/app.js && node --check src/database.js && node --check src/repository.js && node --check src/preview-repository.js && node --check src/structure-assignments.js && node --check src/territorial-catalog.js && node --check src/territory-progress.js && node --check scripts/preview.js && node --check public/app.js && html-validate public/index.html",
+    "check": "node --check server.js && node --check src/app.js && node --check src/database.js && node --check src/database-backup.js && node --check src/repository.js && node --check src/preview-repository.js && node --check src/structure-assignments.js && node --check src/territorial-catalog.js && node --check src/territory-progress.js && node --check scripts/preview.js && node --check public/app.js && html-validate public/index.html",
     "test": "node --test"
   },
   "engines": {

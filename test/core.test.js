@@ -4,6 +4,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createFieldCrypto } = require("../src/field-crypto");
 const { splitStatements } = require("../src/database");
+const {
+  buildSqlBackup,
+  escapeSqlString,
+  sqlValue,
+} = require("../src/database-backup");
 const { MUNICIPALITIES_BY_PROVINCE } = require("../src/territorial-catalog");
 const { applyRoleAssignments } = require("../src/structure-assignments");
 const {
@@ -272,6 +277,30 @@ test("el separador de migraciones conserva sentencias individuales", () => {
   ]);
 });
 
+test("el respaldo SQL conserva esquema, datos y caracteres especiales", () => {
+  const sql = buildSqlBackup({
+    databaseName: "rad_c28",
+    generatedAt: new Date("2026-07-31T12:00:00.000Z"),
+    tables: [
+      {
+        name: "activists",
+        createStatement:
+          "CREATE TABLE `activists` (`id` INT PRIMARY KEY, `name` VARCHAR(100), `notes` TEXT)",
+        rows: [{ id: 1, name: "O'Brien", notes: "línea 1\nlínea 2" }],
+      },
+    ],
+  });
+
+  assert.match(sql, /Respaldo completo de la base de datos RAD-C28/);
+  assert.match(sql, /DROP TABLE IF EXISTS `activists`;/);
+  assert.match(sql, /INSERT INTO `activists` \(`id`, `name`, `notes`\)/);
+  assert.match(sql, /O\\'Brien/);
+  assert.match(sql, /línea 1\\nlínea 2/);
+  assert.equal(escapeSqlString("a\\b"), "a\\\\b");
+  assert.equal(sqlValue(null), "NULL");
+  assert.equal(sqlValue(Buffer.from([0xab, 0xcd])), "X'abcd'");
+});
+
 test("todos los nodos declarados por la interfaz existen y no hay ids duplicados", () => {
   const root = path.join(__dirname, "..", "public");
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
@@ -378,6 +407,26 @@ test("la estructura contempla coordinacion municipal y busqueda nacional escalab
     javascript,
     /Solo administración puede modificar las metas territoriales/
   );
+  assert.match(javascript, /Encargado nacional de capacitaciones/);
+  assert.match(javascript, /Encargado nacional de X \/ Twitter/);
+  assert.match(javascript, /Encargado nacional de Threads/);
+  assert.match(javascript, /NATIONAL_COORDINATION_GROUPS/);
+});
+
+test("la base de activistas se exporta separada del resumen territorial", () => {
+  const publicRoot = path.join(__dirname, "..", "public");
+  const html = fs.readFileSync(path.join(publicRoot, "index.html"), "utf8");
+  const javascript = fs.readFileSync(path.join(publicRoot, "app.js"), "utf8");
+  assert.match(html, /Descargar resumen territorial/);
+  assert.match(html, /Descargar base de activistas CSV/);
+  assert.match(html, /Descargar base de activistas JSON/);
+  assert.match(javascript, /rad-c28-base-activistas-miembros\.csv/);
+  assert.match(javascript, /rad-c28-base-activistas-miembros\.json/);
+  assert.match(javascript, /cedula: record\.cedula/);
+  assert.match(javascript, /whatsapp: record\.whatsapp/);
+  assert.match(javascript, /capacidades: \(record\.skills \|\| \[\]\)\.join/);
+  assert.match(javascript, /row\[`\$\{key\}_alcance`\]/);
+  assert.match(javascript, /row\.alcance_total = totalFollowers/);
 });
 
 test("centro de mando usa alcance nacional y el estado territorial puede ajustarse", () => {

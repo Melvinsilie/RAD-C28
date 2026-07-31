@@ -32,13 +32,50 @@ const MAP_LABEL_OVERRIDES = {
   "Monseñor Nouel": { label: "M. Nouel", fontSize: 8.2 },
   "San Pedro de Macorís": { label: "S.P. de Macorís", fontSize: 7.7 },
 };
-const NATIONAL_COORDINATION_FIELDS = [
-  ["nationalCoordinator", "Coordinador nacional general"],
-  ["deputyNationalCoordinator", "Subcoordinador nacional"],
-  ["operationsCoordinator", "Responsable de operaciones digitales"],
-  ["contentCoordinator", "Responsable de contenidos"],
-  ["pollsCoordinator", "Responsable de sondeos"],
+const NATIONAL_COORDINATION_GROUPS = [
+  {
+    title: "Dirección nacional",
+    fields: [
+      ["nationalCoordinator", "Coordinador nacional general", "Coordinador nacional"],
+      ["deputyNationalCoordinator", "Subcoordinador nacional", "Subcoordinador nacional"],
+    ],
+  },
+  {
+    title: "Áreas nacionales",
+    fields: [
+      [
+        "operationsCoordinator",
+        "Responsable de operaciones digitales",
+        "Coordinador nacional de operaciones digitales",
+      ],
+      [
+        "contentCoordinator",
+        "Encargado nacional de contenido generado",
+        "Coordinador nacional de contenidos",
+      ],
+      ["pollsCoordinator", "Encargado nacional de sondeos", "Coordinador nacional de sondeos"],
+      [
+        "trainingCoordinator",
+        "Encargado nacional de capacitaciones",
+        "Coordinador nacional de capacitaciones",
+      ],
+    ],
+  },
+  {
+    title: "Responsables por red social",
+    fields: [
+      ["xCoordinator", "Encargado nacional de X / Twitter", "Coordinador nacional de X / Twitter"],
+      ["instagramCoordinator", "Encargado nacional de Instagram", "Coordinador nacional de Instagram"],
+      ["facebookCoordinator", "Encargado nacional de Facebook", "Coordinador nacional de Facebook"],
+      ["tiktokCoordinator", "Encargado nacional de TikTok", "Coordinador nacional de TikTok"],
+      ["youtubeCoordinator", "Encargado nacional de YouTube", "Coordinador nacional de YouTube"],
+      ["threadsCoordinator", "Encargado nacional de Threads", "Coordinador nacional de Threads"],
+    ],
+  },
 ];
+const NATIONAL_COORDINATION_FIELDS = NATIONAL_COORDINATION_GROUPS.flatMap(
+  (group) => group.fields
+);
 
 const state = {
   currentUser: null,
@@ -201,8 +238,11 @@ const nodes = Object.fromEntries(
     "userOrganizationalRole",
     "userTemporaryPassword",
     "userFormMessage",
+    "userAccessHelp",
     "userTableBody",
     "auditTableBody",
+    "downloadDatabaseBackupBtn",
+    "databaseBackupStatus",
     "heroPrimaryAction",
     "heroSecondaryAction",
   ].map((id) => [id, document.getElementById(id)])
@@ -290,6 +330,8 @@ function attachEvents() {
     input.addEventListener("change", renderRecordTable);
   });
   nodes.userForm.addEventListener("submit", handleCreateUser);
+  nodes.userAccessRole.addEventListener("change", syncUserAccessRole);
+  nodes.downloadDatabaseBackupBtn.addEventListener("click", downloadDatabaseBackup);
 }
 
 async function api(url, options = {}) {
@@ -505,6 +547,7 @@ async function loadApplicationState() {
   nodes.databaseStatus.textContent = "Sincronizando con la base central...";
   try {
     const snapshot = await api("/api/state");
+    state.needsProfile = Boolean(snapshot.needsProfile);
     Object.assign(state, snapshot);
     nationalAssignmentDraft = null;
     configureAccessView();
@@ -513,7 +556,12 @@ async function loadApplicationState() {
     mapModel = null;
     await mountProvinceMap();
     if (state.currentUser.accessRole === "admin") await loadUsers();
-    activateView(window.location.hash || DEFAULT_VIEW_HASH);
+    activateView(state.needsProfile ? "#registro" : window.location.hash || DEFAULT_VIEW_HASH, {
+      updateHash: Boolean(state.needsProfile),
+    });
+    if (state.needsProfile) {
+      toast("Complete su perfil de activista para continuar.", "warning");
+    }
   } catch (error) {
     toast(error.message, "warning");
   } finally {
@@ -531,6 +579,7 @@ function renderStaticOptions() {
   populateSelect(nodes.provinceInput, state.provincePlans.map((plan) => plan.province));
   populateSelect(nodes.exteriorSectionInput, state.exteriorPlans.map((plan) => plan.seccional), true);
   populateSelect(nodes.userOrganizationalRole, state.catalogs.organizationalRoles);
+  syncUserAccessRole();
   renderSkillChips();
   renderNetworkCards();
   clearForm();
@@ -538,10 +587,15 @@ function renderStaticOptions() {
 
 function configureAccessView() {
   const activist = state.currentUser?.accessRole === "activist";
+  const needsProfile = activist && Boolean(state.needsProfile);
   [
     nodes.territoryScopeInput,
     nodes.provinceInput,
     nodes.exteriorSectionInput,
+  ].forEach((control) => {
+    if (control) control.disabled = activist && !needsProfile;
+  });
+  [
     nodes.statusInput,
     document.getElementById("provCoordinatorInput"),
     document.getElementById("regionalCoordinatorInput"),
@@ -550,9 +604,11 @@ function configureAccessView() {
     if (control) control.disabled = activist;
   });
   nodes.clearFormBtn.hidden = activist;
-  document.getElementById("saveRecordBtn").textContent = activist
-    ? "Actualizar mi perfil"
-    : "Guardar registro";
+  document.getElementById("saveRecordBtn").textContent = needsProfile
+    ? "Completar mi perfil"
+    : activist
+      ? "Actualizar mi perfil"
+      : "Guardar registro";
   syncInductionControls(false);
 
   const dashboardView = document.getElementById("dashboard");
@@ -564,6 +620,8 @@ function configureAccessView() {
   const databaseHeading = document.querySelector("#base .panel-head h3");
   const actionHeading = document.querySelector("#base thead th:last-child");
   const scoreboardHeading = document.querySelector(".scoreboard-panel .panel-head h3");
+  document.querySelector('a[href="#dashboard"]').hidden = needsProfile;
+  document.querySelector('a[href="#base"]').hidden = needsProfile;
 
   if (activist) {
     dashboardView.dataset.moduleTitle = "Mapa nacional y avances de mi territorio";
@@ -581,7 +639,9 @@ function configureAccessView() {
     heroTitle.textContent = "Tu territorio dentro del avance nacional.";
     heroText.textContent =
       "Compare el progreso de las provincias en el mapa nacional, siga los indicadores de su equipo y conecte con las redes de los integrantes de su territorio.";
-    registrationHeading.textContent = "Mantenga actualizada su ficha y capacidad de activación.";
+    registrationHeading.textContent = needsProfile
+      ? "Complete su ficha para activar su acceso territorial."
+      : "Mantenga actualizada su ficha y capacidad de activación.";
     databaseHeading.textContent = "Integrantes y redes de mi equipo territorial";
     actionHeading.textContent = "Acceso";
     scoreboardHeading.textContent = "Clasificación nacional de provincias";
@@ -636,11 +696,27 @@ async function handleRecordSubmit(event) {
   setFormBusy(nodes.activistForm, true);
   try {
     const id = nodes.recordId.value;
-    await api(id ? `/api/activists/${encodeURIComponent(id)}` : "/api/activists", {
-      method: id ? "PUT" : "POST",
-      body: payload,
-    });
-    toast(id ? "Registro actualizado." : "Activista registrado.");
+    const completingOwnProfile =
+      state.currentUser?.accessRole === "activist" && !state.ownRecord;
+    const result = await api(
+      completingOwnProfile
+        ? "/api/activists/me"
+        : id
+          ? `/api/activists/${encodeURIComponent(id)}`
+          : "/api/activists",
+      {
+        method: id ? "PUT" : "POST",
+        body: payload,
+      }
+    );
+    if (result?.user) state.currentUser = result.user;
+    toast(
+      completingOwnProfile
+        ? "Perfil de activista completado."
+        : id
+          ? "Registro actualizado."
+          : "Activista registrado."
+    );
     await refreshState();
     clearForm();
   } catch (error) {
@@ -697,6 +773,7 @@ function collectFormData() {
 
 async function refreshState() {
   const snapshot = await api("/api/state");
+  state.needsProfile = Boolean(snapshot.needsProfile);
   Object.assign(state, snapshot);
   nationalAssignmentDraft = null;
   configureAccessView();
@@ -946,13 +1023,9 @@ function renderCoordinationDirectory() {
       }
     );
   } else {
-    const nationalRoles = new Set([
-      "Coordinador nacional",
-      "Subcoordinador nacional",
-      "Coordinador nacional de operaciones digitales",
-      "Coordinador nacional de contenidos",
-      "Coordinador nacional de sondeos",
-    ]);
+    const nationalRoles = new Set(
+      NATIONAL_COORDINATION_FIELDS.map(([, , role]) => role)
+    );
     state.records
       .filter(
         (record) =>
@@ -1337,34 +1410,40 @@ function renderStructure() {
             </div>`
           : ""
       }
-      <div class="planner-national-grid">
-        ${NATIONAL_COORDINATION_FIELDS
-          .map(
-            ([field, label]) => {
-              const assignment = coordination[field] || {};
-              return `
-              <div class="planner-national-field">
-                <label>${escapeHtml(label)}
-                  <select data-national="${field}" ${canAssignNational ? "" : "disabled"}>
-                    <option value="">Por asignar</option>
-                  </select>
-                </label>
-                <small data-national-summary="${field}">${
-                  assignment.fullName
-                    ? escapeHtml(
-                        [
-                          assignment.organizationalRole,
-                          assignment.whatsapp || assignment.phone || assignment.email,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")
-                      )
-                    : "Seleccione una persona registrada."
-                }</small>
-              </div>`
-            }
-          )
-          .join("")}
+      <div class="planner-national-groups">
+        ${NATIONAL_COORDINATION_GROUPS.map(
+          (group) => `
+            <section class="planner-national-section">
+              <h5>${escapeHtml(group.title)}</h5>
+              <div class="planner-national-grid">
+                ${group.fields
+                  .map(([field, label]) => {
+                    const assignment = coordination[field] || {};
+                    return `
+                      <div class="planner-national-field">
+                        <label>${escapeHtml(label)}
+                          <select data-national="${field}" ${canAssignNational ? "" : "disabled"}>
+                            <option value="">Por asignar</option>
+                          </select>
+                        </label>
+                        <small data-national-summary="${field}">${
+                          assignment.fullName
+                            ? escapeHtml(
+                                [
+                                  assignment.organizationalRole,
+                                  assignment.whatsapp || assignment.phone || assignment.email,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")
+                              )
+                            : "Seleccione una persona registrada."
+                        }</small>
+                      </div>`;
+                  })
+                  .join("")}
+              </div>
+            </section>`
+        ).join("")}
       </div>
       ${
         canAssignNational
@@ -1908,15 +1987,70 @@ async function loadUsers() {
   renderUsers();
 }
 
+async function downloadDatabaseBackup() {
+  const button = nodes.downloadDatabaseBackupBtn;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Preparando respaldo...";
+  nodes.databaseBackupStatus.textContent =
+    "Creando una copia consistente de la base de datos...";
+  try {
+    const response = await fetch("/api/admin/database-backup", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/gzip, application/json",
+        "X-RADC28-Request": "1",
+      },
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        showLogin("La sesión terminó. Inicie sesión nuevamente.");
+      }
+      throw new Error(data.error || "No fue posible crear el respaldo.");
+    }
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const filename =
+      disposition.match(/filename="?([^";]+)"?/i)?.[1] ||
+      `rad-c28-respaldo-${new Date().toISOString().slice(0, 10)}.sql.gz`;
+    const blob = await response.blob();
+    downloadBlob(blob, filename);
+    nodes.databaseBackupStatus.textContent = `Respaldo descargado: ${formatFileSize(
+      blob.size
+    )}.`;
+    toast("Respaldo completo descargado.");
+    await loadUsers();
+  } catch (error) {
+    nodes.databaseBackupStatus.textContent = error.message;
+    toast(error.message, "warning");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
 function renderUsers() {
   nodes.userTableBody.innerHTML = state.users
     .map(
       (user) => `
         <tr>
           <td class="record-name"><strong>${escapeHtml(user.fullName)}</strong><span>${escapeHtml(user.username)}</span></td>
-          <td>${user.accessRole === "admin" ? "Administrador" : "Operador"}</td>
+          <td>${accessRoleLabel(user.accessRole)}</td>
           <td>${escapeHtml(user.organizationalRole || "Sin asignar")}</td>
-          <td><span class="score-chip ${user.active ? "chip-green" : "chip-red"}">${user.active ? "Activo" : "Inactivo"}</span></td>
+          <td><span class="score-chip ${
+            !user.active
+              ? "chip-red"
+              : user.accessRole === "activist" && !user.activistId
+                ? "chip-yellow"
+                : "chip-green"
+          }">${
+            !user.active
+              ? "Inactivo"
+              : user.accessRole === "activist" && !user.activistId
+                ? "Perfil pendiente"
+                : "Activo"
+          }</span></td>
           <td><div class="row-actions">
             <button class="ghost-button" data-reset-user="${user.id}" type="button">Restablecer clave</button>
             <button class="${user.active ? "danger-button" : "ghost-button"}" data-toggle-user="${user.id}" data-active="${!user.active}" type="button">${user.active ? "Desactivar" : "Activar"}</button>
@@ -1965,7 +2099,25 @@ async function handleCreateUser(event) {
     setMessage(nodes.userFormMessage, error.message, true);
   } finally {
     setFormBusy(nodes.userForm, false);
+    syncUserAccessRole();
   }
+}
+
+function syncUserAccessRole() {
+  const activist = nodes.userAccessRole.value === "activist";
+  if (activist) nodes.userOrganizationalRole.value = "Activista";
+  nodes.userOrganizationalRole.disabled = activist;
+  nodes.userAccessHelp.textContent = activist
+    ? "La persona cambiará la contraseña temporal y luego completará su perfil, territorio, redes y alcance."
+    : "Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.";
+}
+
+function accessRoleLabel(role) {
+  return role === "admin"
+    ? "Administrador"
+    : role === "activist"
+      ? "Activista"
+      : "Operador";
 }
 
 async function toggleUser(id, active) {
@@ -2279,7 +2431,8 @@ function renderNetworkCards() {
 }
 
 function activateView(hash, options = {}) {
-  const targetHash = hash?.startsWith("#") ? hash : DEFAULT_VIEW_HASH;
+  let targetHash = hash?.startsWith("#") ? hash : DEFAULT_VIEW_HASH;
+  if (state.needsProfile) targetHash = "#registro";
   if (
     state.currentUser?.accessRole === "activist" &&
     ["#estructura", "#usuarios"].includes(targetHash)
@@ -2311,24 +2464,55 @@ function activateView(hash, options = {}) {
 }
 
 async function exportRecordsCsv() {
-  const rows = state.records.map((record) => ({
-    cedula: record.cedula,
-    nombre: `${record.firstName} ${record.lastName}`,
-    territorio: territoryName(record),
-    municipio: record.municipality,
-    rol: record.role,
-    estado: record.status,
-    induccion: record.tookInduction ? "Sí" : "No",
-    inscripcion_c28: record.c28Registered ? "Sí" : "No",
-    respuesta: record.responseWindow,
-    alcance_declarado: totalFollowers(record.networks),
-  }));
+  const rows = state.records.map((record) => {
+    const row = {
+      cedula: record.cedula,
+      nombre: record.firstName,
+      apellido: record.lastName,
+      telefono: record.phone,
+      whatsapp: record.whatsapp,
+      correo: record.email,
+      rango_edad: record.ageRange,
+      sexo: record.sex,
+      tipo_territorio:
+        record.territoryScope === EXTERIOR_SCOPE ? "Exterior" : "Provincia",
+      provincia: record.province,
+      seccional_exterior: record.exteriorSection,
+      circunscripcion_exterior: record.exteriorCircunscription,
+      municipio: record.municipality,
+      distrito_municipal: record.districtMunicipal,
+      region: record.region,
+      macroregion: record.macroRegion,
+      rol: record.role,
+      estado: record.status,
+      induccion_completada: record.tookInduction ? "Sí" : "No",
+      fecha_induccion: record.inductionDate,
+      inscripcion_c28: record.c28Registered ? "Sí" : "No",
+      ventana_respuesta: record.responseWindow,
+      disponibilidad: record.availability,
+      escuadra_sondeos: record.pollSquad ? "Sí" : "No",
+      capacidades: (record.skills || []).join(" | "),
+      notas: record.notes,
+    };
+    NETWORK_CONFIG.forEach(({ key }) => {
+      const network = record.networks?.[key] || {};
+      row[`${key}_activa`] = network.active ? "Sí" : "No";
+      row[`${key}_usuario`] = network.handle || "";
+      row[`${key}_alcance`] = Number(network.followers || 0);
+    });
+    row.alcance_total = totalFollowers(record.networks);
+    return row;
+  });
   try {
     await api("/api/exports/log", {
       method: "POST",
-      body: { format: "csv", report: "directorio_activistas" },
+      body: { format: "csv", report: "base_activistas_miembros" },
     });
-    downloadFile(toCsv(rows), "rad-c28-directorio.csv", "text/csv;charset=utf-8");
+    downloadFile(
+      toCsv(rows),
+      "rad-c28-base-activistas-miembros.csv",
+      "text/csv;charset=utf-8"
+    );
   } catch (error) {
     toast(error.message, "warning");
   }
@@ -2338,11 +2522,11 @@ async function exportRecordsJson() {
   try {
     await api("/api/exports/log", {
       method: "POST",
-      body: { format: "json", report: "directorio_activistas" },
+      body: { format: "json", report: "base_activistas_miembros" },
     });
     downloadFile(
       JSON.stringify({ exportedAt: new Date().toISOString(), records: state.records }, null, 2),
-      "rad-c28-directorio.json",
+      "rad-c28-base-activistas-miembros.json",
       "application/json"
     );
   } catch (error) {
@@ -2498,8 +2682,16 @@ function actionLabel(action) {
       logout: "Cierre de sesión",
       bootstrap: "Inicialización",
       export: "Exportación",
+      backup: "Respaldo de base de datos",
+      complete_profile: "Perfil de activista completado",
     }[action] || action
   );
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function provinceColor(status) {
@@ -2569,12 +2761,18 @@ function toCsv(rows) {
 }
 
 function downloadFile(content, filename, type) {
-  const url = URL.createObjectURL(new Blob([content], { type }));
+  downloadBlob(new Blob([content], { type }), filename);
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function normalizeProvinceLabel(value) {

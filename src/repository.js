@@ -8,6 +8,7 @@ const {
 } = require("./territory-progress");
 const { MUNICIPALITIES_BY_PROVINCE } = require("./territorial-catalog");
 const { applyRoleAssignments } = require("./structure-assignments");
+const { createDatabaseBackup } = require("./database-backup");
 
 const NATIONAL_ASSIGNMENTS = [
   ["nationalCoordinator", "national_coordinator", "Coordinador nacional"],
@@ -19,6 +20,13 @@ const NATIONAL_ASSIGNMENTS = [
   ],
   ["contentCoordinator", "content_coordinator", "Coordinador nacional de contenidos"],
   ["pollsCoordinator", "polls_coordinator", "Coordinador nacional de sondeos"],
+  ["trainingCoordinator", "training_coordinator", "Coordinador nacional de capacitaciones"],
+  ["xCoordinator", "x_coordinator", "Coordinador nacional de X / Twitter"],
+  ["instagramCoordinator", "instagram_coordinator", "Coordinador nacional de Instagram"],
+  ["facebookCoordinator", "facebook_coordinator", "Coordinador nacional de Facebook"],
+  ["tiktokCoordinator", "tiktok_coordinator", "Coordinador nacional de TikTok"],
+  ["youtubeCoordinator", "youtube_coordinator", "Coordinador nacional de YouTube"],
+  ["threadsCoordinator", "threads_coordinator", "Coordinador nacional de Threads"],
 ];
 
 function createRepository(pool, fields) {
@@ -254,9 +262,35 @@ function createRepository(pool, fields) {
 
     const ownRow = activistRows.find((row) => row.user_id === viewer.id);
     if (!ownRow) {
-      throw Object.assign(new Error("La cuenta no tiene una ficha de activista vinculada."), {
-        status: 403,
-      });
+      return {
+        nationalCoordination: snapshot.nationalCoordination,
+        nationalReach: snapshot.nationalReach,
+        provincePlans: snapshot.provincePlans.map((plan) => ({
+          ...plan,
+          provincialCoordinator: "",
+          regionalCoordinator: "",
+          macroCoordinator: "",
+          whatsappGroupUrl: "",
+        })),
+        exteriorPlans: snapshot.exteriorPlans.map((plan) => ({
+          ...plan,
+          provincialCoordinator: "",
+          regionalCoordinator: "",
+          macroCoordinator: "",
+          whatsappGroupUrl: "",
+        })),
+        municipalityCoordinators: [],
+        records: [],
+        ownRecord: null,
+        ownTerritoryInsights: { sex: buildSexSummary([]) },
+        territoryProgress: buildProvinceProgress(
+          snapshot.provincePlans,
+          snapshot.records
+        ),
+        catalogs: snapshot.catalogs,
+        viewMode: "onboarding",
+        needsProfile: true,
+      };
     }
     const ownRecord = mapActivist(ownRow, networksByActivist, skillsByActivist);
     const territoryProgress = buildProvinceProgress(
@@ -437,6 +471,7 @@ function createRepository(pool, fields) {
       const territory = territoryRows[0];
       const values = {
         id,
+        userId: options.userId || null,
         cedulaHash: fields.fingerprint(payload.cedula),
         cedula: fields.encrypt(payload.cedula),
         firstName: payload.firstName,
@@ -494,7 +529,7 @@ function createRepository(pool, fields) {
       } else {
         await connection.execute(
           `INSERT INTO activists (
-             id, cedula_hash, cedula_encrypted, first_name, last_name, phone_encrypted,
+             id, user_id, cedula_hash, cedula_encrypted, first_name, last_name, phone_encrypted,
              whatsapp_encrypted, email_encrypted, age_range, sex, territory_scope,
              status_name, province, exterior_section, exterior_circunscription,
              municipality, district_municipal, region_name, macro_region,
@@ -502,7 +537,7 @@ function createRepository(pool, fields) {
              macro_coordinator, took_induction, induction_date, c28_registered,
              response_window, availability, poll_squad, notes_encrypted, created_by, updated_by
            ) VALUES (
-             :id, :cedulaHash, :cedula, :firstName, :lastName, :phone, :whatsapp,
+             :id, :userId, :cedulaHash, :cedula, :firstName, :lastName, :phone, :whatsapp,
              :email, :ageRange, :sex, :territoryScope, :status, :province,
              :exteriorSection, :exteriorCircunscription, :municipality, :districtMunicipal,
              :region, :macroRegion, :organizationalRoleId, :provincialCoordinator,
@@ -544,7 +579,10 @@ function createRepository(pool, fields) {
     } catch (error) {
       await connection.rollback();
       if (error.code === "ER_DUP_ENTRY") {
-        throw Object.assign(new Error("La cedula ya existe en la base de datos."), { status: 409 });
+        const message = options.userId
+          ? "La cuenta ya tiene una ficha o la cédula ya existe en la base de datos."
+          : "La cedula ya existe en la base de datos.";
+        throw Object.assign(new Error(message), { status: 409 });
       }
       throw error;
     } finally {
@@ -667,13 +705,13 @@ function createRepository(pool, fields) {
           activistId,
         ];
       });
+      const assignments = NATIONAL_ASSIGNMENTS.flatMap(([, column]) => [
+        `${column}=?`,
+        `${column}_activist_id=?`,
+      ]).join(",\n           ");
       await connection.execute(
         `UPDATE national_coordination SET
-           national_coordinator=?, national_coordinator_activist_id=?,
-           deputy_national_coordinator=?, deputy_national_coordinator_activist_id=?,
-           operations_coordinator=?, operations_coordinator_activist_id=?,
-           content_coordinator=?, content_coordinator_activist_id=?,
-           polls_coordinator=?, polls_coordinator_activist_id=?
+           ${assignments}
          WHERE singleton_id=1`,
         values
       );
@@ -1047,6 +1085,10 @@ function createRepository(pool, fields) {
     }));
   }
 
+  async function exportDatabaseBackup() {
+    return createDatabaseBackup(pool);
+  }
+
   return {
     publicUser,
     loadState,
@@ -1075,6 +1117,7 @@ function createRepository(pool, fields) {
     cleanupSessions,
     audit,
     listAuditLogs,
+    exportDatabaseBackup,
   };
 }
 
