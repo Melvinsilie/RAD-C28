@@ -8,7 +8,7 @@
       name="description"
       content="Centro de operaciones para el registro, la organización territorial y la capacidad de activación de RAD-C28."
     />
-    <link rel="stylesheet" href="./styles.css?v=20260730.10" />
+    <link rel="stylesheet" href="./styles.css?v=20260731.1" />
   </head>
   <body>
     <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
@@ -775,13 +775,13 @@
 
             <div class="action-cluster staff-only">
               <button class="button button-secondary" id="exportTerritorialBtn" type="button">
-                Descargar resumen estructural
+                Descargar resumen territorial
               </button>
               <button class="button button-secondary" id="exportCsvBtn" type="button">
-                Descargar CSV
+                Descargar base de activistas CSV
               </button>
               <button class="button button-primary" id="exportJsonBtn" type="button">
-                Descargar JSON
+                Descargar base de activistas JSON
               </button>
             </div>
           </div>
@@ -873,6 +873,7 @@
                       <select id="userAccessRole">
                         <option value="operator">Operador</option>
                         <option value="admin">Administrador</option>
+                        <option value="activist">Activista</option>
                       </select>
                     </label>
                     <label>
@@ -884,7 +885,7 @@
                       <input id="userTemporaryPassword" type="password" autocomplete="new-password" minlength="6" required />
                     </label>
                   </div>
-                  <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
+                  <small id="userAccessHelp">Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
                   <p class="form-message" id="userFormMessage" role="alert"></p>
                   <button class="button button-primary" type="submit">Crear cuenta</button>
                 </form>
@@ -910,6 +911,30 @@
                       <tbody id="userTableBody"></tbody>
                     </table>
                   </div>
+                </article>
+
+                <article class="panel database-panel backup-panel">
+                  <div class="panel-head">
+                    <div>
+                      <p class="eyebrow">Seguridad de datos</p>
+                      <h3>Respaldo completo</h3>
+                    </div>
+                    <span class="status-pill">Solo administradores</span>
+                  </div>
+                  <p>
+                    Descarga una copia comprimida con la estructura y todos los datos de la base MySQL.
+                  </p>
+                  <div class="backup-actions">
+                    <button class="button button-primary" id="downloadDatabaseBackupBtn" type="button">
+                      Descargar respaldo SQL.GZ
+                    </button>
+                    <span id="databaseBackupStatus" aria-live="polite">
+                      La descarga queda registrada en la auditoría.
+                    </span>
+                  </div>
+                  <small>
+                    Guarde el archivo en un lugar seguro. Para recuperar cédulas y contactos cifrados también debe conservar la clave privada del servidor; esa clave nunca se incluye en la descarga.
+                  </small>
                 </article>
 
                 <article class="panel database-panel audit-panel">
@@ -942,6 +967,6 @@
 
     <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=20260730.10"></script>
+    <script type="module" src="./app.js?v=20260731.1"></script>
   </body>
 </html>

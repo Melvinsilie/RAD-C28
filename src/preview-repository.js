@@ -8,6 +8,7 @@ const {
 } = require("./territory-progress");
 const { MUNICIPALITIES_BY_PROVINCE } = require("./territorial-catalog");
 const { applyRoleAssignments } = require("./structure-assignments");
+const { buildSqlBackup } = require("./database-backup");
 
 const NATIONAL_ASSIGNMENT_ROLES = {
   nationalCoordinator: "Coordinador nacional",
@@ -15,6 +16,13 @@ const NATIONAL_ASSIGNMENT_ROLES = {
   operationsCoordinator: "Coordinador nacional de operaciones digitales",
   contentCoordinator: "Coordinador nacional de contenidos",
   pollsCoordinator: "Coordinador nacional de sondeos",
+  trainingCoordinator: "Coordinador nacional de capacitaciones",
+  xCoordinator: "Coordinador nacional de X / Twitter",
+  instagramCoordinator: "Coordinador nacional de Instagram",
+  facebookCoordinator: "Coordinador nacional de Facebook",
+  tiktokCoordinator: "Coordinador nacional de TikTok",
+  youtubeCoordinator: "Coordinador nacional de YouTube",
+  threadsCoordinator: "Coordinador nacional de Threads",
 };
 const NATIONAL_ASSIGNMENT_KEYS = Object.keys(NATIONAL_ASSIGNMENT_ROLES);
 
@@ -25,6 +33,13 @@ const ROLES = [
   "Coordinador nacional de operaciones digitales",
   "Coordinador nacional de contenidos",
   "Coordinador nacional de sondeos",
+  "Coordinador nacional de capacitaciones",
+  "Coordinador nacional de X / Twitter",
+  "Coordinador nacional de Instagram",
+  "Coordinador nacional de Facebook",
+  "Coordinador nacional de TikTok",
+  "Coordinador nacional de YouTube",
+  "Coordinador nacional de Threads",
   "Coordinador municipal",
   "Coordinador provincial",
   "Coordinador regional",
@@ -226,7 +241,9 @@ function createPreviewRepository({ passwordHash }) {
       const user = users.find((item) => item.id === id);
       user.password_hash = nextPasswordHash;
       user.must_change_password = false;
-      sessions.clear();
+      sessions.forEach((session, tokenHash) => {
+        if (session.id === id) sessions.delete(tokenHash);
+      });
     },
     async getPublicCatalogs() {
       return {
@@ -269,7 +286,34 @@ function createPreviewRepository({ passwordHash }) {
       };
       if (viewer?.access_role !== "activist") return structuredClone(snapshot);
       const ownRecord = records.find((record) => record.userId === viewer.id);
-      if (!ownRecord) throw Object.assign(new Error("Ficha no vinculada."), { status: 403 });
+      if (!ownRecord) {
+        return structuredClone({
+          nationalCoordination: snapshot.nationalCoordination,
+          nationalReach: snapshot.nationalReach,
+          provincePlans: snapshot.provincePlans.map((plan) => ({
+            ...plan,
+            provincialCoordinator: "",
+            regionalCoordinator: "",
+            macroCoordinator: "",
+            whatsappGroupUrl: "",
+          })),
+          exteriorPlans: snapshot.exteriorPlans.map((plan) => ({
+            ...plan,
+            provincialCoordinator: "",
+            regionalCoordinator: "",
+            macroCoordinator: "",
+            whatsappGroupUrl: "",
+          })),
+          municipalityCoordinators: [],
+          records: [],
+          ownRecord: null,
+          ownTerritoryInsights: { sex: buildSexSummary([]) },
+          territoryProgress: buildProvinceProgress(snapshot.provincePlans, records),
+          catalogs: snapshot.catalogs,
+          viewMode: "onboarding",
+          needsProfile: true,
+        });
+      }
       const territoryProgress = buildProvinceProgress(
         snapshot.provincePlans,
         records
@@ -341,6 +385,14 @@ function createPreviewRepository({ passwordHash }) {
       const existingIndex = records.findIndex((record) => record.id === id);
       const duplicate = records.find((record) => record.cedula === payload.cedula && record.id !== id);
       if (duplicate) throw Object.assign(new Error("La cédula ya existe."), { status: 409 });
+      if (
+        options.userId &&
+        records.some((record) => record.userId === options.userId)
+      ) {
+        throw Object.assign(new Error("La cuenta ya tiene una ficha de activista."), {
+          status: 409,
+        });
+      }
       const protectedValues =
         options.selfService && existingIndex >= 0
           ? {
@@ -375,13 +427,36 @@ function createPreviewRepository({ passwordHash }) {
         regionalCoordinator: territory?.regionalCoordinator || "",
         macroCoordinator: territory?.macroCoordinator || "",
         id,
-        userId: existingIndex >= 0 ? records[existingIndex].userId : null,
+        userId:
+          existingIndex >= 0
+            ? records[existingIndex].userId
+            : options.userId || null,
         createdAt: existingIndex >= 0 ? records[existingIndex].createdAt : now,
         updatedAt: now,
         createdBy: actorId,
       };
       if (existingIndex >= 0) records[existingIndex] = record;
       else records.unshift(record);
+      if (options.userId) {
+        const user = users.find((item) => item.id === options.userId);
+        if (user) {
+          user.activist_id = id;
+          user.activist_territory_scope = record.territoryScope;
+          user.activist_province = record.province || null;
+          user.activist_exterior_section = record.exteriorSection || null;
+          sessions.forEach((session, tokenHash) => {
+            if (session.id === user.id) {
+              sessions.set(tokenHash, {
+                ...session,
+                activist_id: id,
+                activist_territory_scope: record.territoryScope,
+                activist_province: record.province || null,
+                activist_exterior_section: record.exteriorSection || null,
+              });
+            }
+          });
+        }
+      }
       return id;
     },
     async deleteActivist(id) {
@@ -499,6 +574,38 @@ function createPreviewRepository({ passwordHash }) {
     },
     async listAuditLogs() {
       return structuredClone(audits.slice(0, 100));
+    },
+    async exportDatabaseBackup() {
+      const tables = [
+        {
+          name: "preview_users",
+          createStatement:
+            "CREATE TABLE `preview_users` (`id` CHAR(36) PRIMARY KEY, `username` VARCHAR(80), `full_name` VARCHAR(160)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+          rows: users.map(({ id, username, full_name }) => ({
+            id,
+            username,
+            full_name,
+          })),
+        },
+        {
+          name: "preview_activists",
+          createStatement:
+            "CREATE TABLE `preview_activists` (`id` CHAR(36) PRIMARY KEY, `record_json` JSON) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+          rows: records.map((record) => ({
+            id: record.id,
+            record_json: record,
+          })),
+        },
+      ];
+      return {
+        sql: buildSqlBackup({
+          databaseName: "rad_c28_preview",
+          generatedAt: new Date(),
+          tables,
+        }),
+        tableCount: tables.length,
+        rowCount: tables.reduce((total, table) => total + table.rows.length, 0),
+      };
     },
     async listUsers() {
       return users.map(publicUser);

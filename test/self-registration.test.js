@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const bcrypt = require("bcryptjs");
+const { gunzipSync } = require("node:zlib");
 const { createApp } = require("../src/app");
 const { createPreviewRepository } = require("../src/preview-repository");
 
@@ -61,6 +62,149 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   });
   assert.equal(operatorLogin.status, 200);
   const operatorCookie = cookieFrom(operatorLogin);
+
+  const adminBackup = await fetch(`${base}/api/admin/database-backup`, {
+    method: "POST",
+    headers: { ...headers, cookie: adminCookie },
+  });
+  assert.equal(adminBackup.status, 200);
+  assert.equal(adminBackup.headers.get("content-type"), "application/gzip");
+  assert.match(
+    adminBackup.headers.get("content-disposition"),
+    /rad-c28-respaldo-\d{8}T\d{6}Z\.sql\.gz/
+  );
+  const backupSql = gunzipSync(Buffer.from(await adminBackup.arrayBuffer())).toString(
+    "utf8"
+  );
+  assert.match(backupSql, /Respaldo completo de la base de datos RAD-C28/);
+  assert.match(backupSql, /CREATE TABLE `preview_users`/);
+
+  const forbiddenOperatorBackup = await fetch(
+    `${base}/api/admin/database-backup`,
+    {
+      method: "POST",
+      headers: { ...headers, cookie: operatorCookie },
+    }
+  );
+  assert.equal(forbiddenOperatorBackup.status, 403);
+
+  const assistedAccount = await fetch(`${base}/api/users`, {
+    method: "POST",
+    headers: { ...headers, cookie: adminCookie },
+    body: JSON.stringify({
+      username: "activista.asistida",
+      fullName: "Activista Asistida",
+      accessRole: "activist",
+      organizationalRole: "Coordinador nacional",
+      temporaryPassword: "Temporal-2026!",
+    }),
+  });
+  assert.equal(assistedAccount.status, 201);
+
+  const assistedLogin = await fetch(`${base}/api/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      username: "activista.asistida",
+      password: "Temporal-2026!",
+    }),
+  });
+  assert.equal(assistedLogin.status, 200);
+  const assistedLoginData = await assistedLogin.json();
+  assert.equal(assistedLoginData.user.accessRole, "activist");
+  assert.equal(assistedLoginData.user.organizationalRole, "Activista");
+  assert.equal(assistedLoginData.user.activistId, null);
+  assert.equal(assistedLoginData.user.mustChangePassword, true);
+  const assistedTemporaryCookie = cookieFrom(assistedLogin);
+
+  const assistedPasswordChange = await fetch(
+    `${base}/api/auth/change-password`,
+    {
+      method: "POST",
+      headers: { ...headers, cookie: assistedTemporaryCookie },
+      body: JSON.stringify({
+        currentPassword: "Temporal-2026!",
+        newPassword: "Activista-Asistida-2026!",
+      }),
+    }
+  );
+  assert.equal(assistedPasswordChange.status, 200);
+  const assistedCookie = cookieFrom(assistedPasswordChange);
+
+  const assistedOnboarding = await fetch(`${base}/api/state`, {
+    headers: { cookie: assistedCookie, "x-radc28-request": "1" },
+  });
+  assert.equal(assistedOnboarding.status, 200);
+  const assistedOnboardingState = await assistedOnboarding.json();
+  assert.equal(assistedOnboardingState.needsProfile, true);
+  assert.equal(assistedOnboardingState.viewMode, "onboarding");
+  assert.equal(assistedOnboardingState.records.length, 0);
+  assert.equal(
+    assistedOnboardingState.catalogs.organizationalRoles.includes(
+      "Coordinador nacional de capacitaciones"
+    ),
+    true
+  );
+  assert.equal(
+    assistedOnboardingState.catalogs.organizationalRoles.includes(
+      "Coordinador nacional de Threads"
+    ),
+    true
+  );
+
+  const assistedProfile = await fetch(`${base}/api/activists/me`, {
+    method: "POST",
+    headers: { ...headers, cookie: assistedCookie },
+    body: JSON.stringify({
+      cedula: "001-0000002-5",
+      firstName: "Activista",
+      lastName: "Asistida",
+      phone: "809-555-5000",
+      whatsapp: "809-555-5000",
+      email: "asistida@example.test",
+      sex: "Femenino",
+      territoryScope: "provincia",
+      province: "Barahona",
+      municipality: "Barahona",
+      responseWindow: "15 min",
+      availability: "Noche",
+      skills: ["Creación de contenido"],
+      networks: {
+        instagram: {
+          handle: "@activista_asistida",
+          followers: 1250,
+          active: true,
+        },
+      },
+    }),
+  });
+  assert.equal(assistedProfile.status, 201);
+  const assistedProfileData = await assistedProfile.json();
+  assert.ok(assistedProfileData.user.activistId);
+
+  const assistedTerritoryState = await (
+    await fetch(`${base}/api/state`, {
+      headers: { cookie: assistedCookie, "x-radc28-request": "1" },
+    })
+  ).json();
+  assert.equal(assistedTerritoryState.viewMode, "territory");
+  assert.equal(assistedTerritoryState.needsProfile, undefined);
+  assert.equal(assistedTerritoryState.ownRecord.networks.instagram.followers, 1250);
+
+  const duplicateAssistedProfile = await fetch(`${base}/api/activists/me`, {
+    method: "POST",
+    headers: { ...headers, cookie: assistedCookie },
+    body: JSON.stringify({}),
+  });
+  assert.equal(duplicateAssistedProfile.status, 409);
+
+  const forbiddenOperatorProfile = await fetch(`${base}/api/activists/me`, {
+    method: "POST",
+    headers: { ...headers, cookie: operatorCookie },
+    body: JSON.stringify({}),
+  });
+  assert.equal(forbiddenOperatorProfile.status, 403);
+
   const groupUrl = "https://chat.whatsapp.com/ExampleTerritoryInvite";
   const configuredGroup = await fetch(
     `${base}/api/plans/provinces/${encodeURIComponent("Azua")}`,
@@ -165,6 +309,15 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
       operationsCoordinator: { activistId: "" },
       contentCoordinator: { activistId: "" },
       pollsCoordinator: { activistId: "" },
+      trainingCoordinator: {
+        activistId: assistedProfileData.user.activistId,
+      },
+      xCoordinator: { activistId: "" },
+      instagramCoordinator: { activistId: "" },
+      facebookCoordinator: { activistId: "" },
+      tiktokCoordinator: { activistId: "" },
+      youtubeCoordinator: { activistId: "" },
+      threadsCoordinator: { activistId: "" },
     }),
   });
   assert.equal(nationalAssignment.status, 200);
@@ -178,6 +331,16 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
       (record) => record.id === otherRegistrationData.user.activistId
     ).role,
     "Coordinador nacional"
+  );
+  assert.equal(
+    adminStateAfterAssignment.records.find(
+      (record) => record.id === assistedProfileData.user.activistId
+    ).role,
+    "Coordinador nacional de capacitaciones"
+  );
+  assert.equal(
+    adminStateAfterAssignment.nationalCoordination.trainingCoordinator.activistId,
+    assistedProfileData.user.activistId
   );
   assert.equal(adminStateAfterAssignment.provinceNetworkReach.provinces.length, 32);
   assert.equal(
@@ -216,7 +379,7 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(stateResponse.status, 200);
   const state = await stateResponse.json();
   assert.equal(state.viewMode, "territory");
-  assert.equal(state.nationalReach, 0);
+  assert.equal(state.nationalReach, 1250);
   assert.equal(state.provinceNetworkReach, undefined);
   assert.equal(state.provincePlans.length, 32);
   assert.equal(state.territoryProgress.length, 32);
@@ -335,7 +498,7 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(updatedState.ownRecord.tookInduction, true);
   assert.equal(updatedState.ownRecord.inductionDate, "2026-07-30");
   assert.equal(updatedState.ownRecord.c28Registered, true);
-  assert.equal(updatedState.nationalReach, 120);
+  assert.equal(updatedState.nationalReach, 1370);
   assert.equal(updatedState.provinceNetworkReach, undefined);
   assert.equal(
     updatedState.municipalityCoordinators[0].coordinatorName,

@@ -292,6 +292,30 @@ body:not(.is-authenticated) .app-shell {
   grid-column: 1 / -1;
 }
 
+.backup-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.backup-panel > p,
+.backup-panel > small,
+.backup-actions span {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.backup-actions .button {
+  flex: 0 0 auto;
+}
+
 button:disabled,
 input:disabled,
 select:disabled,
@@ -2112,6 +2136,25 @@ form.is-busy textarea:disabled {
 .planner-national-search small {
   min-height: 1.25em;
   color: rgba(226, 235, 255, 0.76);
+}
+
+.planner-national-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.planner-national-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.planner-national-section h5 {
+  margin: 0;
+  color: #f7f9ff;
+  font-size: 0.98rem;
+  letter-spacing: 0.04em;
 }
 
 .planner-national-grid {
