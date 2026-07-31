@@ -214,6 +214,7 @@ nodes.appViews = [...document.querySelectorAll(".app-view")];
 let mapModel = null;
 let loadingState = false;
 let nationalAssignmentQuery = "";
+let nationalAssignmentDraft = null;
 const selectedMunicipalities = new Map();
 
 bootstrap();
@@ -283,6 +284,7 @@ function attachEvents() {
   nodes.toggleNetworkReachBtn.addEventListener("click", () => {
     setNetworkReachView(nodes.networkReachPanel.hidden);
   });
+  nodes.provinceConfigTable.addEventListener("click", handleStructureAction);
   [nodes.searchInput, nodes.filterProvince, nodes.filterRole, nodes.filterStatus].forEach((input) => {
     input.addEventListener("input", renderRecordTable);
     input.addEventListener("change", renderRecordTable);
@@ -504,6 +506,7 @@ async function loadApplicationState() {
   try {
     const snapshot = await api("/api/state");
     Object.assign(state, snapshot);
+    nationalAssignmentDraft = null;
     configureAccessView();
     renderStaticOptions();
     renderAll();
@@ -676,7 +679,7 @@ function collectFormData() {
     districtMunicipal: valueOf("districtInput"),
     region: nodes.regionInput.value,
     macroRegion: nodes.macroRegionInput.value,
-    role: nodes.recordId.value ? nodes.roleInput.value : "Activista",
+    role: nodes.roleInput.value || "Activista",
     provincialCoordinator: valueOf("provCoordinatorInput"),
     regionalCoordinator: valueOf("regionalCoordinatorInput"),
     macroCoordinator: valueOf("macroCoordinatorInput"),
@@ -695,6 +698,7 @@ function collectFormData() {
 async function refreshState() {
   const snapshot = await api("/api/state");
   Object.assign(state, snapshot);
+  nationalAssignmentDraft = null;
   configureAccessView();
   renderAll();
   mapModel = null;
@@ -771,7 +775,11 @@ function clearForm() {
   }
   nodes.activistForm.reset();
   nodes.recordId.value = "";
-  nodes.adminRoleSection.classList.add("hidden");
+  nodes.adminRoleSection.classList.toggle(
+    "hidden",
+    state.currentUser?.accessRole === "activist"
+  );
+  nodes.roleInput.value = "Activista";
   nodes.territoryScopeInput.value = DOMESTIC_SCOPE;
   nodes.statusInput.value = STATUS_OPTIONS[0];
   nodes.responseWindowInput.value = RESPONSE_WINDOWS[1];
@@ -937,6 +945,40 @@ function renderCoordinationDirectory() {
       });
       }
     );
+  } else {
+    const nationalRoles = new Set([
+      "Coordinador nacional",
+      "Subcoordinador nacional",
+      "Coordinador nacional de operaciones digitales",
+      "Coordinador nacional de contenidos",
+      "Coordinador nacional de sondeos",
+    ]);
+    state.records
+      .filter(
+        (record) =>
+          record.role &&
+          record.role !== "Activista" &&
+          !nationalRoles.has(record.role)
+      )
+      .sort((left, right) =>
+        `${left.role}/${territoryName(left)}/${left.firstName}/${left.lastName}`.localeCompare(
+          `${right.role}/${territoryName(right)}/${right.firstName}/${right.lastName}`,
+          "es"
+        )
+      )
+      .forEach((record) => {
+        const publicNetworks = formatNetworkHandles(record.networks);
+        cards.push({
+          label: record.role,
+          fullName: `${record.firstName} ${record.lastName}`.trim(),
+          organizationalRole: "Asignación territorial registrada",
+          territory: [record.municipality, territoryName(record)]
+            .filter(Boolean)
+            .join(" · "),
+          publicNetworks:
+            publicNetworks !== "Sin redes registradas" ? publicNetworks : "",
+        });
+      });
   }
 
   nodes.coordinationDirectory.innerHTML = cards
@@ -1257,6 +1299,14 @@ function setNetworkReachView(showNetworkReach) {
 function renderStructure() {
   const coordination = state.nationalCoordination;
   const canAssignNational = state.currentUser?.accessRole === "admin";
+  if (!nationalAssignmentDraft) {
+    nationalAssignmentDraft = Object.fromEntries(
+      NATIONAL_COORDINATION_FIELDS.map(([field]) => [
+        field,
+        coordination[field]?.activistId || "",
+      ])
+    );
+  }
   const assignableRecords = state.records
     .filter((record) => record.id)
     .sort((a, b) =>
@@ -1299,7 +1349,7 @@ function renderStructure() {
                     <option value="">Por asignar</option>
                   </select>
                 </label>
-                <small>${
+                <small data-national-summary="${field}">${
                   assignment.fullName
                     ? escapeHtml(
                         [
@@ -1316,10 +1366,25 @@ function renderStructure() {
           )
           .join("")}
       </div>
+      ${
+        canAssignNational
+          ? `<div class="planner-national-actions">
+              <button class="button button-primary" id="saveNationalAssignmentsBtn" type="button">
+                Guardar designaciones
+              </button>
+              <button class="button button-secondary" id="resetNationalAssignmentsBtn" type="button">
+                Descartar cambios
+              </button>
+              <small id="nationalAssignmentSaveStatus" aria-live="polite">
+                Puede mover, reemplazar o retirar personas antes de guardar.
+              </small>
+            </div>`
+          : ""
+      }
     </div>
     <div class="planner-role-guide">
       <strong>Metas territoriales</strong>
-      <span>Las metas pueden ajustarse según la planificación oficial.</span>
+      <span>Solo administración puede ajustar metas y responsables territoriales.</span>
       <span>Los indicadores del dashboard se recalculan automáticamente.</span>
     </div>
     <div class="planner-board-stack">
@@ -1330,7 +1395,7 @@ function renderStructure() {
     </div>`;
 
   nodes.provinceConfigTable.querySelectorAll("[data-national]").forEach((input) => {
-    input.addEventListener("change", handleCoordinationChange);
+    input.addEventListener("change", handleCoordinationDraftChange);
   });
   nodes.provinceConfigTable.querySelectorAll("[data-plan-key]").forEach((input) => {
     input.addEventListener("change", handlePlanChange);
@@ -1350,6 +1415,16 @@ function renderStructure() {
       updateNationalAssignmentSelects(assignableRecords);
     });
   }
+  document
+    .getElementById("saveNationalAssignmentsBtn")
+    ?.addEventListener("click", handleCoordinationSave);
+  document
+    .getElementById("resetNationalAssignmentsBtn")
+    ?.addEventListener("click", () => {
+      nationalAssignmentDraft = null;
+      renderStructure();
+      toast("Cambios de coordinación descartados.");
+    });
   updateNationalAssignmentSelects(assignableRecords);
 }
 
@@ -1374,7 +1449,7 @@ function updateNationalAssignmentSelects(assignableRecords) {
 
   nodes.provinceConfigTable.querySelectorAll("[data-national]").forEach((select) => {
     const field = select.dataset.national;
-    const selectedId = state.nationalCoordination[field]?.activistId || "";
+    const selectedId = nationalAssignmentDraft?.[field] || "";
     const selectedRecord = assignableRecords.find(
       (record) => record.id === selectedId
     );
@@ -1400,7 +1475,52 @@ function updateNationalAssignmentSelects(assignableRecords) {
             </option>`
         )
         .join("")}`;
+
+    const summary = nodes.provinceConfigTable.querySelector(
+      `[data-national-summary="${field}"]`
+    );
+    if (!summary) return;
+    const committedId = state.nationalCoordination[field]?.activistId || "";
+    if (!selectedRecord) {
+      summary.innerHTML =
+        selectedId === committedId
+          ? "Seleccione una persona registrada."
+          : '<span class="planner-pending-change">Pendiente: retirar designación</span>';
+      return;
+    }
+    const details = [
+      selectedRecord.role,
+      selectedRecord.municipality,
+      territoryName(selectedRecord),
+      selectedRecord.whatsapp || selectedRecord.phone || selectedRecord.email,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    summary.innerHTML = `
+      <span>${escapeHtml(details)}</span>
+      ${
+        selectedId !== committedId
+          ? '<span class="planner-pending-change">Pendiente de guardar</span>'
+          : ""
+      }
+      <button class="planner-edit-record" data-edit-national-record="${escapeAttribute(
+        selectedRecord.id
+      )}" type="button">Editar ficha</button>`;
   });
+
+  const hasPendingChanges = NATIONAL_COORDINATION_FIELDS.some(
+    ([field]) =>
+      (nationalAssignmentDraft?.[field] || "") !==
+      (state.nationalCoordination[field]?.activistId || "")
+  );
+  const saveButton = document.getElementById("saveNationalAssignmentsBtn");
+  if (saveButton) saveButton.disabled = !hasPendingChanges;
+  const saveStatus = document.getElementById("nationalAssignmentSaveStatus");
+  if (saveStatus) {
+    saveStatus.textContent = hasPendingChanges
+      ? "Hay cambios pendientes. Revise las designaciones y guárdelas."
+      : "Las designaciones están sincronizadas con la base central.";
+  }
 
   const status = document.getElementById("nationalAssignmentSearchStatus");
   if (!status) return;
@@ -1448,7 +1568,8 @@ function renderPlanCard(plan, exterior) {
       assignment.province === name &&
       assignment.municipality === selectedMunicipality
   );
-  const canAssignMunicipal = state.currentUser?.accessRole === "admin";
+  const canEditPlan = state.currentUser?.accessRole === "admin";
+  const canAssignMunicipal = canEditPlan;
   const fields = exterior
     ? [
         ["circunscriptionCount", "Circunscripciones", plan.circunscriptionCount],
@@ -1473,7 +1594,8 @@ function renderPlanCard(plan, exterior) {
               <div class="planner-input"><label>${escapeHtml(label)}
                 <input type="number" min="0" value="${Number(value)}"
                   data-plan-key="${escapeAttribute(name)}" data-plan-field="${field}"
-                  data-plan-scope="${exterior ? "exterior" : "province"}" />
+                  data-plan-scope="${exterior ? "exterior" : "province"}"
+                  ${canEditPlan ? "" : "disabled"} />
               </label></div>`
           )
           .join("")}
@@ -1489,7 +1611,8 @@ function renderPlanCard(plan, exterior) {
               <div class="planner-input"><label>${escapeHtml(label)}
                 <input value="${escapeAttribute(plan[field] || "")}"
                   data-plan-key="${escapeAttribute(name)}" data-plan-field="${field}"
-                  data-plan-scope="${exterior ? "exterior" : "province"}" />
+                  data-plan-scope="${exterior ? "exterior" : "province"}"
+                  ${canEditPlan ? "" : "disabled"} />
               </label></div>`
           )
           .join("")}
@@ -1546,7 +1669,8 @@ function renderPlanCard(plan, exterior) {
           <input type="url" value="${escapeAttribute(plan.whatsappGroupUrl || "")}"
             placeholder="https://chat.whatsapp.com/..."
             data-plan-key="${escapeAttribute(name)}" data-plan-field="whatsappGroupUrl"
-            data-plan-scope="${exterior ? "exterior" : "province"}" />
+            data-plan-scope="${exterior ? "exterior" : "province"}"
+            ${canEditPlan ? "" : "disabled"} />
         </label>
       </div>
       <div class="planner-macro-metrics">
@@ -1609,6 +1733,11 @@ async function handleMunicipalityCoordinatorChange(event) {
 }
 
 async function handlePlanChange(event) {
+  if (state.currentUser?.accessRole !== "admin") {
+    toast("Solo administración puede modificar las metas territoriales.", "warning");
+    await refreshState();
+    return;
+  }
   const scope = event.target.dataset.planScope;
   const key = event.target.dataset.planKey;
   const plans = scope === "exterior" ? state.exteriorPlans : state.provincePlans;
@@ -1631,26 +1760,64 @@ async function handlePlanChange(event) {
   }
 }
 
-async function handleCoordinationChange(event) {
+function handleCoordinationDraftChange(event) {
   const field = event.target.dataset.national;
-  state.nationalCoordination[field] = {
-    ...(state.nationalCoordination[field] || {}),
-    activistId: event.target.value,
-  };
+  const activistId = event.target.value;
+  if (!nationalAssignmentDraft) nationalAssignmentDraft = {};
+  if (activistId) {
+    NATIONAL_COORDINATION_FIELDS.forEach(([key]) => {
+      if (key !== field && nationalAssignmentDraft[key] === activistId) {
+        nationalAssignmentDraft[key] = "";
+      }
+    });
+  }
+  nationalAssignmentDraft[field] = activistId;
+  const assignableRecords = state.records
+    .filter((record) => record.id)
+    .sort((left, right) =>
+      `${left.firstName} ${left.lastName}`.localeCompare(
+        `${right.firstName} ${right.lastName}`,
+        "es"
+      )
+    );
+  updateNationalAssignmentSelects(assignableRecords);
+}
+
+async function handleCoordinationSave() {
+  const button = document.getElementById("saveNationalAssignmentsBtn");
+  if (button) button.disabled = true;
   try {
     const payload = Object.fromEntries(
       NATIONAL_COORDINATION_FIELDS.map(([key]) => [
         key,
-        { activistId: state.nationalCoordination[key]?.activistId || "" },
+        { activistId: nationalAssignmentDraft?.[key] || "" },
       ])
     );
     await api("/api/coordination", { method: "PUT", body: payload });
-    toast("Coordinación nacional actualizada.");
+    toast("Designaciones nacionales actualizadas.");
+    nationalAssignmentDraft = null;
     await refreshState();
   } catch (error) {
     toast(error.message, "warning");
-    await refreshState();
+    const assignableRecords = state.records.filter((record) => record.id);
+    updateNationalAssignmentSelects(assignableRecords);
   }
+}
+
+function handleStructureAction(event) {
+  const button = event.target.closest("[data-edit-national-record]");
+  if (!button) return;
+  const record = state.records.find(
+    (item) => item.id === button.dataset.editNationalRecord
+  );
+  if (!record) {
+    toast("La ficha seleccionada ya no está disponible.", "warning");
+    return;
+  }
+  loadRecordIntoForm(record);
+  activateView("#registro", { updateHash: true });
+  nodes.cedulaInput.focus();
+  toast(`Ficha de ${record.firstName} ${record.lastName} lista para editar.`);
 }
 
 function renderFilters() {

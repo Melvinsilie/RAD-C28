@@ -295,7 +295,7 @@ function createApp({ repository, config }) {
 
   app.put(
     "/api/plans/provinces/:province",
-    requireStaff,
+    requireAdmin,
     asyncRoute(async (request, response) => {
       const province = cleanText(decodeURIComponent(request.params.province), 100);
       await repository.updateProvince(province, validateProvincePlan(request.body));
@@ -306,7 +306,7 @@ function createApp({ repository, config }) {
 
   app.put(
     "/api/plans/exterior/:seccional",
-    requireStaff,
+    requireAdmin,
     asyncRoute(async (request, response) => {
       const seccional = cleanText(decodeURIComponent(request.params.seccional), 100);
       await repository.updateExterior(seccional, validateExteriorPlan(request.body));

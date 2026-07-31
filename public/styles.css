@@ -2125,6 +2125,61 @@ form.is-busy textarea:disabled {
   background: rgba(255, 255, 255, 0.88);
 }
 
+.planner-national-field > small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-height: 2.8em;
+  color: rgba(226, 235, 255, 0.78);
+  line-height: 1.4;
+}
+
+.planner-pending-change {
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #fff4cd;
+  background: rgba(229, 163, 33, 0.2);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.planner-edit-record {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.planner-national-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.planner-national-actions .button {
+  min-height: 42px;
+}
+
+.planner-national-actions > small {
+  flex: 1 1 280px;
+  color: rgba(226, 235, 255, 0.76);
+  line-height: 1.4;
+}
+
+.planner-card input:disabled,
+.planner-card select:disabled {
+  color: rgba(21, 31, 49, 0.76);
+  background: rgba(235, 231, 225, 0.82);
+}
+
 .planner-municipal-assignment {
   display: grid;
   gap: 12px;
@@ -2822,6 +2877,15 @@ tbody td {
   }
 
   .scoreboard-panel .panel-head .button {
+    width: 100%;
+  }
+
+  .planner-national-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planner-national-actions .button {
     width: 100%;
   }
 

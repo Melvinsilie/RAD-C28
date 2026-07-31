@@ -12,6 +12,15 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   const repository = createPreviewRepository({
     passwordHash: await bcrypt.hash("Vista-Local-2026!", 4),
   });
+  const operatorPasswordHash = await bcrypt.hash("Operador-2026!", 4);
+  const operatorId = await repository.createUser({
+    username: "operador",
+    fullName: "Operador territorial",
+    passwordHash: operatorPasswordHash,
+    accessRole: "operator",
+    organizationalRole: "Apoyo de contenidos",
+  });
+  await repository.setPassword(operatorId, operatorPasswordHash);
   const app = createApp({
     repository,
     config: { trustProxy: 0, sessionHours: 8, env: "test" },
@@ -42,6 +51,16 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
     body: JSON.stringify({ username: "vista", password: "Vista-Local-2026!" }),
   });
   const adminCookie = cookieFrom(adminLogin);
+  const operatorLogin = await fetch(`${base}/api/auth/login`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      username: "operador",
+      password: "Operador-2026!",
+    }),
+  });
+  assert.equal(operatorLogin.status, 200);
+  const operatorCookie = cookieFrom(operatorLogin);
   const groupUrl = "https://chat.whatsapp.com/ExampleTerritoryInvite";
   const configuredGroup = await fetch(
     `${base}/api/plans/provinces/${encodeURIComponent("Azua")}`,
@@ -318,6 +337,10 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(updatedState.ownRecord.c28Registered, true);
   assert.equal(updatedState.nationalReach, 120);
   assert.equal(updatedState.provinceNetworkReach, undefined);
+  assert.equal(
+    updatedState.municipalityCoordinators[0].coordinatorName,
+    "Cuenta Territorial"
+  );
 
   const operationalUpdate = await fetch(
     `${base}/api/activists/${encodeURIComponent(updatedState.ownRecord.id)}`,
@@ -355,6 +378,34 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
     }
   );
   assert.equal(forbiddenPlanChange.status, 403);
+
+  const forbiddenOperatorPlanChange = await fetch(
+    `${base}/api/plans/provinces/${encodeURIComponent("Azua")}`,
+    {
+      method: "PUT",
+      headers: { ...headers, cookie: operatorCookie },
+      body: JSON.stringify({
+        plannedCells: 99,
+        unitGoal: 99,
+        provincialGoal: 99,
+      }),
+    }
+  );
+  assert.equal(forbiddenOperatorPlanChange.status, 403);
+
+  const forbiddenOperatorExteriorPlanChange = await fetch(
+    `${base}/api/plans/exterior/${encodeURIComponent("Nueva York")}`,
+    {
+      method: "PUT",
+      headers: { ...headers, cookie: operatorCookie },
+      body: JSON.stringify({
+        circunscriptionCount: 99,
+        baseGoal: 99,
+        unitGoal: 99,
+      }),
+    }
+  );
+  assert.equal(forbiddenOperatorExteriorPlanChange.status, 403);
 
   const forbiddenMunicipalChange = await fetch(
     `${base}/api/plans/municipalities/${encodeURIComponent(

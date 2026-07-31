@@ -7,6 +7,7 @@ const {
   buildSexSummary,
 } = require("./territory-progress");
 const { MUNICIPALITIES_BY_PROVINCE } = require("./territorial-catalog");
+const { applyRoleAssignments } = require("./structure-assignments");
 
 const NATIONAL_ASSIGNMENT_ROLES = {
   nationalCoordinator: "Coordinador nacional",
@@ -243,13 +244,22 @@ function createPreviewRepository({ passwordHash }) {
       };
     },
     async loadState(viewer = null) {
-      const snapshot = {
-        nationalCoordination: currentNationalCoordination(),
-        nationalReach: buildNationalReach(records),
-        provinceNetworkReach: buildProvinceNetworkReach(provincePlans, records),
+      const effectiveStructure = applyRoleAssignments({
         provincePlans,
         exteriorPlans,
         municipalityCoordinators,
+        records,
+      });
+      const snapshot = {
+        nationalCoordination: currentNationalCoordination(),
+        nationalReach: buildNationalReach(records),
+        provinceNetworkReach: buildProvinceNetworkReach(
+          effectiveStructure.provincePlans,
+          records
+        ),
+        provincePlans: effectiveStructure.provincePlans,
+        exteriorPlans: effectiveStructure.exteriorPlans,
+        municipalityCoordinators: effectiveStructure.municipalityCoordinators,
         records,
         catalogs: {
           organizationalRoles: ROLES,
@@ -260,7 +270,10 @@ function createPreviewRepository({ passwordHash }) {
       if (viewer?.access_role !== "activist") return structuredClone(snapshot);
       const ownRecord = records.find((record) => record.userId === viewer.id);
       if (!ownRecord) throw Object.assign(new Error("Ficha no vinculada."), { status: 403 });
-      const territoryProgress = buildProvinceProgress(provincePlans, records);
+      const territoryProgress = buildProvinceProgress(
+        snapshot.provincePlans,
+        records
+      );
       const sameTerritory = records.filter((record) =>
         ownRecord.territoryScope === "exterior"
           ? record.territoryScope === "exterior" &&
@@ -278,7 +291,7 @@ function createPreviewRepository({ passwordHash }) {
         notes: "",
         networks: record.networks,
       }));
-      const visibleProvincePlans = provincePlans.map((plan) => {
+      const visibleProvincePlans = snapshot.provincePlans.map((plan) => {
         const ownProvince =
           ownRecord.territoryScope === "provincia" && plan.province === ownRecord.province;
         return {
@@ -300,11 +313,13 @@ function createPreviewRepository({ passwordHash }) {
         provincePlans: visibleProvincePlans,
         exteriorPlans:
           ownRecord.territoryScope === "exterior"
-            ? exteriorPlans.filter((plan) => plan.seccional === ownRecord.exteriorSection)
+            ? snapshot.exteriorPlans.filter(
+                (plan) => plan.seccional === ownRecord.exteriorSection
+              )
             : [],
         municipalityCoordinators:
           ownRecord.territoryScope === "provincia"
-            ? municipalityCoordinators.filter(
+            ? snapshot.municipalityCoordinators.filter(
                 (assignment) =>
                   assignment.province === ownRecord.province &&
                   assignment.municipality === ownRecord.municipality

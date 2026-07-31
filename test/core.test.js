@@ -5,6 +5,7 @@ const path = require("node:path");
 const { createFieldCrypto } = require("../src/field-crypto");
 const { splitStatements } = require("../src/database");
 const { MUNICIPALITIES_BY_PROVINCE } = require("../src/territorial-catalog");
+const { applyRoleAssignments } = require("../src/structure-assignments");
 const {
   buildNationalReach,
   buildProvinceNetworkReach,
@@ -193,6 +194,77 @@ test("el alcance por red se agrupa por provincia y cierra con el total RAD-C28",
   assert.equal(reach.grandTotal, 3600);
 });
 
+test("los roles territoriales alimentan automáticamente la estructura", () => {
+  const structure = applyRoleAssignments({
+    provincePlans: [
+      {
+        province: "Azua",
+        region: "Valdesia",
+        macroRegion: "Suroeste",
+        provincialCoordinator: "",
+        regionalCoordinator: "",
+        macroCoordinator: "",
+      },
+      {
+        province: "San Cristóbal",
+        region: "Valdesia",
+        macroRegion: "Suroeste",
+        provincialCoordinator: "",
+        regionalCoordinator: "",
+        macroCoordinator: "",
+      },
+    ],
+    exteriorPlans: [],
+    municipalityCoordinators: [],
+    records: [
+      {
+        id: "provincial",
+        firstName: "Ana",
+        lastName: "Pérez",
+        role: "Coordinador provincial",
+        territoryScope: "provincia",
+        province: "Azua",
+        municipality: "Azua",
+        region: "Valdesia",
+        macroRegion: "Suroeste",
+      },
+      {
+        id: "regional",
+        firstName: "Luis",
+        lastName: "Gómez",
+        role: "Coordinador regional",
+        territoryScope: "provincia",
+        province: "Azua",
+        municipality: "Azua",
+        region: "Valdesia",
+        macroRegion: "Suroeste",
+      },
+      {
+        id: "municipal",
+        firstName: "Marta",
+        lastName: "Díaz",
+        role: "Coordinador municipal",
+        territoryScope: "provincia",
+        province: "Azua",
+        municipality: "Azua",
+        region: "Valdesia",
+        macroRegion: "Suroeste",
+      },
+    ],
+  });
+
+  assert.equal(structure.provincePlans[0].provincialCoordinator, "Ana Pérez");
+  assert.equal(structure.provincePlans[0].regionalCoordinator, "Luis Gómez");
+  assert.equal(structure.provincePlans[1].regionalCoordinator, "Luis Gómez");
+  assert.deepEqual(structure.municipalityCoordinators[0], {
+    province: "Azua",
+    municipality: "Azua",
+    coordinatorName: "Marta Díaz",
+    activistId: "municipal",
+    source: "role",
+  });
+});
+
 test("el separador de migraciones conserva sentencias individuales", () => {
   assert.deepEqual(splitStatements("CREATE TABLE a (id INT);\nINSERT INTO a VALUES (1);\n"), [
     "CREATE TABLE a (id INT)",
@@ -300,6 +372,12 @@ test("la estructura contempla coordinacion municipal y busqueda nacional escalab
     /\["Enlace de contenidos territorial", "Apoyo de contenidos"\]/
   );
   assert.match(javascript, /function findTerritorialRoleAssignment/);
+  assert.match(javascript, /role:\s*nodes\.roleInput\.value \|\| "Activista"/);
+  assert.match(javascript, /Guardar designaciones/);
+  assert.match(
+    javascript,
+    /Solo administración puede modificar las metas territoriales/
+  );
 });
 
 test("centro de mando usa alcance nacional y el estado territorial puede ajustarse", () => {
