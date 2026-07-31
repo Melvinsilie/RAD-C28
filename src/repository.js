@@ -7,6 +7,7 @@ const {
   buildSexSummary,
 } = require("./territory-progress");
 const { MUNICIPALITIES_BY_PROVINCE } = require("./territorial-catalog");
+const { applyRoleAssignments } = require("./structure-assignments");
 
 const NATIONAL_ASSIGNMENTS = [
   ["nationalCoordinator", "national_coordinator", "Coordinador nacional"],
@@ -217,20 +218,30 @@ function createRepository(pool, fields) {
       mapActivist(row, networksByActivist, skillsByActivist)
     );
     const mappedProvincePlans = provinceRows.map(mapProvince);
+    const mappedExteriorPlans = exteriorRows.map(mapExterior);
+    const mappedMunicipalityCoordinators = municipalityCoordinatorRows.map(
+      (row) => ({
+        province: row.province,
+        municipality: row.municipality,
+        coordinatorName: row.coordinator_name,
+      })
+    );
+    const effectiveStructure = applyRoleAssignments({
+      provincePlans: mappedProvincePlans,
+      exteriorPlans: mappedExteriorPlans,
+      municipalityCoordinators: mappedMunicipalityCoordinators,
+      records: mappedRecords,
+    });
     const snapshot = {
       nationalCoordination: mapNationalCoordination(coordination, mappedRecords),
       nationalReach: buildNationalReach(mappedRecords),
       provinceNetworkReach: buildProvinceNetworkReach(
-        mappedProvincePlans,
+        effectiveStructure.provincePlans,
         mappedRecords
       ),
-      provincePlans: mappedProvincePlans,
-      exteriorPlans: exteriorRows.map(mapExterior),
-      municipalityCoordinators: municipalityCoordinatorRows.map((row) => ({
-        province: row.province,
-        municipality: row.municipality,
-        coordinatorName: row.coordinator_name,
-      })),
+      provincePlans: effectiveStructure.provincePlans,
+      exteriorPlans: effectiveStructure.exteriorPlans,
+      municipalityCoordinators: effectiveStructure.municipalityCoordinators,
       records: mappedRecords,
       catalogs: {
         organizationalRoles: roleRows.map((row) => row.name),
