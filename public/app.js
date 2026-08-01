@@ -159,6 +159,17 @@ const nodes = Object.fromEntries(
     "resetConfirmPassword",
     "resetPasswordMessage",
     "cancelResetPasswordBtn",
+    "editUserDialog",
+    "editUserForm",
+    "editUserId",
+    "editUserHasActivist",
+    "editUserFullName",
+    "editUsername",
+    "editUserAccessRole",
+    "editUserOrganizationalRole",
+    "editUserAccessHelp",
+    "editUserMessage",
+    "cancelEditUserBtn",
     "changePasswordBtn",
     "logoutBtn",
     "sidebarUserName",
@@ -289,6 +300,9 @@ function attachEvents() {
   nodes.cancelPasswordBtn.addEventListener("click", () => nodes.passwordDialog.close());
   nodes.resetPasswordForm.addEventListener("submit", handleResetUserPassword);
   nodes.cancelResetPasswordBtn.addEventListener("click", () => nodes.resetPasswordDialog.close());
+  nodes.editUserForm.addEventListener("submit", handleEditUser);
+  nodes.editUserAccessRole.addEventListener("change", syncEditUserAccessRole);
+  nodes.cancelEditUserBtn.addEventListener("click", () => nodes.editUserDialog.close());
   nodes.changePasswordBtn.addEventListener("click", () => openPasswordDialog(false));
   nodes.logoutBtn.addEventListener("click", handleLogout);
   nodes.sidebarToggle.addEventListener("click", () => setSidebarOpen(true));
@@ -2052,6 +2066,7 @@ function renderUsers() {
                 : "Activo"
           }</span></td>
           <td><div class="row-actions">
+            <button class="ghost-button" data-edit-user="${user.id}" type="button">Editar</button>
             <button class="ghost-button" data-reset-user="${user.id}" type="button">Restablecer clave</button>
             <button class="${user.active ? "danger-button" : "ghost-button"}" data-toggle-user="${user.id}" data-active="${!user.active}" type="button">${user.active ? "Desactivar" : "Activar"}</button>
           </div></td>
@@ -2073,6 +2088,9 @@ function renderUsers() {
   });
   nodes.userTableBody.querySelectorAll("[data-reset-user]").forEach((button) => {
     button.addEventListener("click", () => resetUserPassword(button.dataset.resetUser));
+  });
+  nodes.userTableBody.querySelectorAll("[data-edit-user]").forEach((button) => {
+    button.addEventListener("click", () => openEditUser(button.dataset.editUser));
   });
 }
 
@@ -2107,9 +2125,83 @@ function syncUserAccessRole() {
   const activist = nodes.userAccessRole.value === "activist";
   if (activist) nodes.userOrganizationalRole.value = "Activista";
   nodes.userOrganizationalRole.disabled = activist;
-  nodes.userAccessHelp.textContent = activist
-    ? "La persona cambiará la contraseña temporal y luego completará su perfil, territorio, redes y alcance."
-    : "Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.";
+  nodes.userAccessHelp.textContent = `${accessProfileHelp(
+    nodes.userAccessRole.value,
+    false
+  )} La clave temporal debe tener 8 caracteres o más, una letra y un número; no requiere símbolo.`;
+}
+
+function accessProfileHelp(role, hasActivist) {
+  if (role === "admin") {
+    return "Administrador: controla usuarios, permisos, estructura, metas y respaldos.";
+  }
+  if (role === "operator") {
+    return "Operador: puede registrar y gestionar activistas, pero no administra usuarios, estructura, metas ni respaldos.";
+  }
+  return hasActivist
+    ? "Activista: queda limitado a su propia ficha y a la información autorizada de su territorio."
+    : "Activista: al entrar cambiará la clave temporal y completará su propio perfil, territorio, redes y alcance.";
+}
+
+function openEditUser(id) {
+  const user = state.users.find((item) => item.id === id);
+  if (!user) return;
+  nodes.editUserForm.reset();
+  nodes.editUserId.value = user.id;
+  nodes.editUserHasActivist.value = user.activistId ? "1" : "";
+  nodes.editUserFullName.value = user.fullName;
+  nodes.editUsername.value = user.username;
+  nodes.editUserAccessRole.value = user.accessRole;
+  nodes.editUserAccessRole.disabled = user.id === state.currentUser?.id;
+  populateSelect(
+    nodes.editUserOrganizationalRole,
+    state.catalogs.organizationalRoles
+  );
+  nodes.editUserOrganizationalRole.value =
+    user.organizationalRole || "Activista";
+  setMessage(nodes.editUserMessage, "");
+  syncEditUserAccessRole();
+  nodes.editUserDialog.showModal();
+}
+
+function syncEditUserAccessRole() {
+  const hasActivist = nodes.editUserHasActivist.value === "1";
+  const pendingActivist =
+    nodes.editUserAccessRole.value === "activist" && !hasActivist;
+  if (pendingActivist) nodes.editUserOrganizationalRole.value = "Activista";
+  nodes.editUserOrganizationalRole.disabled = pendingActivist;
+  nodes.editUserAccessHelp.textContent = accessProfileHelp(
+    nodes.editUserAccessRole.value,
+    hasActivist
+  ) +
+    (nodes.editUserId.value === state.currentUser?.id
+      ? " Por seguridad, no puede retirar su propio acceso de administrador."
+      : "");
+}
+
+async function handleEditUser(event) {
+  event.preventDefault();
+  setMessage(nodes.editUserMessage, "");
+  setFormBusy(nodes.editUserForm, true);
+  try {
+    await api(`/api/users/${encodeURIComponent(nodes.editUserId.value)}`, {
+      method: "PATCH",
+      body: {
+        fullName: nodes.editUserFullName.value,
+        username: nodes.editUsername.value,
+        accessRole: nodes.editUserAccessRole.value,
+        organizationalRole: nodes.editUserOrganizationalRole.value,
+      },
+    });
+    nodes.editUserDialog.close();
+    toast("Usuario, perfil de acceso y rol actualizados.");
+    await loadUsers();
+  } catch (error) {
+    setMessage(nodes.editUserMessage, error.message, true);
+  } finally {
+    setFormBusy(nodes.editUserForm, false);
+    syncEditUserAccessRole();
+  }
 }
 
 function accessRoleLabel(role) {
@@ -2684,6 +2776,7 @@ function actionLabel(action) {
       export: "Exportación",
       backup: "Respaldo de base de datos",
       complete_profile: "Perfil de activista completado",
+      update_access: "Cambio de perfil y rol",
     }[action] || action
   );
 }

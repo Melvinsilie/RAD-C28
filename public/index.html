@@ -8,7 +8,7 @@
       name="description"
       content="Centro de operaciones para el registro, la organización territorial y la capacidad de activación de RAD-C28."
     />
-    <link rel="stylesheet" href="./styles.css?v=20260731.1" />
+    <link rel="stylesheet" href="./styles.css?v=20260801.2" />
   </head>
   <body>
     <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
@@ -68,14 +68,14 @@
             </label>
             <label>
               Contraseña
-              <input id="selfPassword" type="password" autocomplete="new-password" minlength="6" required />
+              <input id="selfPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
             </label>
             <label>
               Confirmar contraseña
-              <input id="selfConfirmPassword" type="password" autocomplete="new-password" minlength="6" required />
+              <input id="selfConfirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
             </label>
           </div>
-          <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
+          <small>Use 8 caracteres o más e incluya al menos una letra y un número. No requiere mayúscula ni símbolo.</small>
         </section>
 
         <section class="form-section">
@@ -170,13 +170,13 @@
         </label>
         <label>
           Contraseña nueva
-          <input id="newPassword" type="password" autocomplete="new-password" minlength="6" required />
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
         </label>
         <label>
           Confirmar contraseña nueva
-          <input id="confirmPassword" type="password" autocomplete="new-password" minlength="6" required />
+          <input id="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
         </label>
-        <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
+        <small>Use 8 caracteres o más e incluya al menos una letra y un número. No requiere mayúscula ni símbolo.</small>
         <p class="form-message" id="passwordMessage" role="alert"></p>
         <div class="form-actions">
           <button class="button button-primary" type="submit">Guardar contraseña</button>
@@ -193,17 +193,53 @@
         <input id="resetTargetUserId" type="hidden" />
         <label>
           Contraseña temporal
-          <input id="resetTemporaryPassword" type="password" autocomplete="new-password" minlength="6" required />
+          <input id="resetTemporaryPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
         </label>
         <label>
           Confirmar contraseña temporal
-          <input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="6" required />
+          <input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
         </label>
-        <small>Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
+        <small>Use 8 caracteres o más e incluya al menos una letra y un número. No requiere mayúscula ni símbolo.</small>
         <p class="form-message" id="resetPasswordMessage" role="alert"></p>
         <div class="form-actions">
           <button class="button button-primary" type="submit">Restablecer</button>
           <button class="button button-secondary" id="cancelResetPasswordBtn" type="button">Cancelar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="account-dialog" id="editUserDialog">
+      <form class="account-form" id="editUserForm">
+        <p class="eyebrow">Control de acceso</p>
+        <h2>Editar usuario</h2>
+        <p>El perfil controla los permisos del sistema. El rol identifica la función de la persona dentro de RAD-C28.</p>
+        <input id="editUserId" type="hidden" />
+        <input id="editUserHasActivist" type="hidden" />
+        <label>
+          Nombre completo
+          <input id="editUserFullName" type="text" required />
+        </label>
+        <label>
+          Usuario
+          <input id="editUsername" type="text" autocomplete="off" required />
+        </label>
+        <label>
+          Perfil de acceso
+          <select id="editUserAccessRole">
+            <option value="activist">Activista</option>
+            <option value="operator">Operador</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+        <label>
+          Rol organizativo
+          <select id="editUserOrganizationalRole"></select>
+        </label>
+        <small id="editUserAccessHelp"></small>
+        <p class="form-message" id="editUserMessage" role="alert"></p>
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">Guardar cambios</button>
+          <button class="button button-secondary" id="cancelEditUserBtn" type="button">Cancelar</button>
         </div>
       </form>
     </dialog>
@@ -882,10 +918,15 @@
                     </label>
                     <label>
                       Contraseña temporal
-                      <input id="userTemporaryPassword" type="password" autocomplete="new-password" minlength="6" required />
+                      <input id="userTemporaryPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
                     </label>
                   </div>
-                  <small id="userAccessHelp">Use al menos 6 caracteres, mayúscula, minúscula, número y símbolo.</small>
+                  <small id="userAccessHelp"></small>
+                  <div class="access-profile-guide" role="group" aria-label="Diferencias entre perfiles de acceso">
+                    <p><strong>Activista:</strong> completa y edita únicamente su propio perfil; consulta solo la información autorizada de su territorio.</p>
+                    <p><strong>Operador:</strong> puede registrar, editar y apoyar activistas de la base; no administra usuarios, respaldos, estructura ni metas.</p>
+                    <p><strong>Administrador:</strong> controla usuarios, permisos, estructura, metas y respaldos.</p>
+                  </div>
                   <p class="form-message" id="userFormMessage" role="alert"></p>
                   <button class="button button-primary" type="submit">Crear cuenta</button>
                 </form>
@@ -967,6 +1008,6 @@
 
     <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=20260731.1"></script>
+    <script type="module" src="./app.js?v=20260801.2"></script>
   </body>
 </html>

@@ -628,6 +628,41 @@ function createPreviewRepository({ passwordHash }) {
       });
       return id;
     },
+    async updateUser(id, input) {
+      const user = users.find((item) => item.id === id);
+      if (!user) {
+        throw Object.assign(new Error("Usuario no encontrado."), { status: 404 });
+      }
+      if (
+        users.some(
+          (item) => item.id !== id && item.username === input.username
+        )
+      ) {
+        throw Object.assign(new Error("Ese nombre de usuario ya existe."), {
+          status: 409,
+        });
+      }
+      user.username = input.username;
+      user.full_name = input.fullName;
+      user.access_role = input.accessRole;
+      user.organizational_role = input.organizationalRole;
+      const record = records.find((item) => item.userId === id);
+      if (record) {
+        record.role = input.organizationalRole;
+        record.updatedAt = new Date().toISOString();
+      }
+      sessions.forEach((session, tokenHash) => {
+        if (session.id === id) {
+          sessions.set(tokenHash, {
+            ...session,
+            username: user.username,
+            full_name: user.full_name,
+            access_role: user.access_role,
+            organizational_role: user.organizational_role,
+          });
+        }
+      });
+    },
     async registerActivistAccount(input) {
       if (
         users.some((user) => user.username === input.username) ||

@@ -51,6 +51,8 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
     headers,
     body: JSON.stringify({ username: "vista", password: "Vista-Local-2026!" }),
   });
+  assert.equal(adminLogin.status, 200);
+  const adminLoginData = await adminLogin.json();
   const adminCookie = cookieFrom(adminLogin);
   const operatorLogin = await fetch(`${base}/api/auth/login`, {
     method: "POST",
@@ -62,6 +64,89 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   });
   assert.equal(operatorLogin.status, 200);
   const operatorCookie = cookieFrom(operatorLogin);
+
+  const operatorCreatedActivist = await fetch(`${base}/api/activists`, {
+    method: "POST",
+    headers: { ...headers, cookie: operatorCookie },
+    body: JSON.stringify({
+      cedula: "001-0000003-3",
+      firstName: "Registro",
+      lastName: "Asistido",
+      phone: "809-555-6000",
+      whatsapp: "809-555-6000",
+      email: "registro.asistido@example.test",
+      territoryScope: "provincia",
+      status: "Pendiente de activación",
+      province: "Duarte",
+      municipality: "San Francisco de Macorís",
+      role: "Activista",
+      responseWindow: "15 min",
+      availability: "Tarde",
+      networks: {},
+    }),
+  });
+  assert.equal(operatorCreatedActivist.status, 201);
+
+  const operatorAsActivist = await fetch(`${base}/api/users/${operatorId}`, {
+    method: "PATCH",
+    headers: { ...headers, cookie: adminCookie },
+    body: JSON.stringify({
+      username: "operador.grupo",
+      fullName: "Operador de grupo",
+      accessRole: "activist",
+      organizationalRole: "Coordinador municipal",
+    }),
+  });
+  assert.equal(operatorAsActivist.status, 200);
+  const operatorAsActivistData = await operatorAsActivist.json();
+  assert.equal(operatorAsActivistData.user.accessRole, "activist");
+  assert.equal(operatorAsActivistData.user.organizationalRole, "Activista");
+
+  const operatorOnboarding = await fetch(`${base}/api/state`, {
+    headers: { cookie: operatorCookie, "x-radc28-request": "1" },
+  });
+  assert.equal(operatorOnboarding.status, 200);
+  assert.equal((await operatorOnboarding.json()).viewMode, "onboarding");
+
+  const restoredOperator = await fetch(`${base}/api/users/${operatorId}`, {
+    method: "PATCH",
+    headers: { ...headers, cookie: adminCookie },
+    body: JSON.stringify({
+      username: "operador.grupo",
+      fullName: "Operador de grupo",
+      accessRole: "operator",
+      organizationalRole: "Coordinador municipal",
+    }),
+  });
+  assert.equal(restoredOperator.status, 200);
+  const restoredOperatorData = await restoredOperator.json();
+  assert.equal(restoredOperatorData.user.accessRole, "operator");
+  assert.equal(
+    restoredOperatorData.user.organizationalRole,
+    "Coordinador municipal"
+  );
+
+  const currentOperator = await (
+    await fetch(`${base}/api/auth/me`, {
+      headers: { cookie: operatorCookie, "x-radc28-request": "1" },
+    })
+  ).json();
+  assert.equal(currentOperator.user.username, "operador.grupo");
+
+  const forbiddenSelfDemotion = await fetch(
+    `${base}/api/users/${adminLoginData.user.id}`,
+    {
+      method: "PATCH",
+      headers: { ...headers, cookie: adminCookie },
+      body: JSON.stringify({
+        username: "vista",
+        fullName: "Administrador de vista local",
+        accessRole: "operator",
+        organizationalRole: "Coordinador nacional",
+      }),
+    }
+  );
+  assert.equal(forbiddenSelfDemotion.status, 400);
 
   const adminBackup = await fetch(`${base}/api/admin/database-backup`, {
     method: "POST",
@@ -190,6 +275,27 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(assistedTerritoryState.viewMode, "territory");
   assert.equal(assistedTerritoryState.needsProfile, undefined);
   assert.equal(assistedTerritoryState.ownRecord.networks.instagram.followers, 1250);
+
+  const assistedRoleEdit = await fetch(
+    `${base}/api/users/${assistedLoginData.user.id}`,
+    {
+      method: "PATCH",
+      headers: { ...headers, cookie: adminCookie },
+      body: JSON.stringify({
+        username: "activista.asistida",
+        fullName: "Activista Asistida",
+        accessRole: "activist",
+        organizationalRole: "Coordinador municipal",
+      }),
+    }
+  );
+  assert.equal(assistedRoleEdit.status, 200);
+  const assistedAfterRoleEdit = await (
+    await fetch(`${base}/api/state`, {
+      headers: { cookie: assistedCookie, "x-radc28-request": "1" },
+    })
+  ).json();
+  assert.equal(assistedAfterRoleEdit.ownRecord.role, "Coordinador municipal");
 
   const duplicateAssistedProfile = await fetch(`${base}/api/activists/me`, {
     method: "POST",
