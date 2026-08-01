@@ -10,7 +10,8 @@ formación y el seguimiento de la capacidad operativa de RAD-C28.
 - Cambio obligatorio de la contraseña temporal en el primer acceso.
 - Perfiles de acceso `admin`, `operator` y `activist`.
 - Roles organizativos independientes de los permisos del sistema.
-- Gestión de usuarios, activación, desactivación y restablecimiento de contraseña.
+- Gestión de usuarios, edición de perfiles de acceso y roles, activación,
+  desactivación y restablecimiento de contraseña.
 - Registro, edición, consulta y eliminación de activistas.
 - Cédula, contacto, usuarios de redes y notas cifrados con AES-256-GCM.
 - Directorio con filtros y exportación a CSV o JSON.
@@ -29,6 +30,10 @@ formación y el seguimiento de la capacidad operativa de RAD-C28.
   y los datos de contacto de quienes hayan sido formalmente designados.
 - Dashboard y mapa alimentados exclusivamente por MySQL/MariaDB.
 - Auditoría de accesos y operaciones críticas.
+- Límites de acceso y registro que cuentan únicamente intentos fallidos para no
+  bloquear grupos que comparten una misma conexión.
+- Contraseñas de 8 a 128 caracteres con al menos una letra y un número; no se
+  exige mayúscula ni símbolo.
 - Base inicial sin activistas ni valores de demostración.
 
 ## Requisitos

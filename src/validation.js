@@ -30,14 +30,13 @@ function validateUsername(value) {
 function validatePassword(value) {
   const password = String(value ?? "");
   if (
-    password.length < 6 ||
-    !/[a-z]/.test(password) ||
-    !/[A-Z]/.test(password) ||
-    !/\d/.test(password) ||
-    !/[^A-Za-z0-9]/.test(password)
+    password.length < 8 ||
+    password.length > 128 ||
+    !/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(password) ||
+    !/\d/.test(password)
   ) {
     throw badRequest(
-      "La contraseña debe tener al menos 6 caracteres, mayuscula, minuscula, numero y simbolo."
+      "La contraseña debe tener entre 8 y 128 caracteres e incluir al menos una letra y un numero. No requiere mayuscula ni simbolo."
     );
   }
   return password;

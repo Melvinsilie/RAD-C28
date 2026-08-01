@@ -859,6 +859,49 @@ function createRepository(pool, fields) {
     }
   }
 
+  async function updateUser(id, input, actorId) {
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const organizationalRoleId = await roleId(
+        connection,
+        input.organizationalRole
+      );
+      const [result] = await connection.execute(
+        `UPDATE users
+         SET username=?, full_name=?, access_role=?, organizational_role_id=?
+         WHERE id=?`,
+        [
+          input.username,
+          input.fullName,
+          input.accessRole,
+          organizationalRoleId,
+          id,
+        ]
+      );
+      if (!result.affectedRows) {
+        throw Object.assign(new Error("Usuario no encontrado."), { status: 404 });
+      }
+      await connection.execute(
+        `UPDATE activists
+         SET organizational_role_id=?, updated_by=?
+         WHERE user_id=?`,
+        [organizationalRoleId, actorId, id]
+      );
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      if (error.code === "ER_DUP_ENTRY") {
+        throw Object.assign(new Error("Ese nombre de usuario ya existe."), {
+          status: 409,
+        });
+      }
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async function registerActivistAccount(input) {
     const userId = crypto.randomUUID();
     const activistId = crypto.randomUUID();
@@ -1103,6 +1146,7 @@ function createRepository(pool, fields) {
     findUserById,
     listUsers,
     createUser,
+    updateUser,
     registerActivistAccount,
     updateUserStatus,
     resetUserPassword,

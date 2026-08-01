@@ -52,18 +52,26 @@ function createApp({ repository, config }) {
 
   const loginLimiter = rateLimit({
     windowMs: 15 * 60_000,
-    limit: 20,
+    limit: 60,
+    skipSuccessfulRequests: true,
     standardHeaders: "draft-8",
     legacyHeaders: false,
-    message: { error: "Demasiados intentos. Espere unos minutos antes de volver a intentar." },
+    message: {
+      error:
+        "Se detectaron demasiados accesos fallidos desde esta conexión. Espere 15 minutos o solicite al administrador restablecer su contraseña.",
+    },
   });
   const registrationLimiter = rateLimit({
-    windowMs: 60 * 60_000,
-    limit: 10,
+    windowMs: 15 * 60_000,
+    limit: 60,
     skip: () => config.env !== "production",
+    skipSuccessfulRequests: true,
     standardHeaders: "draft-8",
     legacyHeaders: false,
-    message: { error: "Se alcanzo el limite temporal de registros desde esta conexion." },
+    message: {
+      error:
+        "Se detectaron demasiados registros incompletos desde esta conexión. Espere 15 minutos o solicite ayuda a un operador.",
+    },
   });
 
   const asyncRoute = (handler) => (request, response, next) =>
@@ -504,6 +512,62 @@ function createApp({ repository, config }) {
         request
       );
       response.status(201).json({ id });
+    })
+  );
+
+  app.patch(
+    "/api/users/:id",
+    requireAdmin,
+    asyncRoute(async (request, response) => {
+      const id = cleanText(request.params.id, 36);
+      const target = await repository.findUserById(id);
+      if (!target) {
+        throw Object.assign(new Error("Usuario no encontrado."), { status: 404 });
+      }
+      const accessRole = cleanText(request.body?.accessRole, 20);
+      if (!["admin", "operator", "activist"].includes(accessRole)) {
+        throw badRequest("El perfil de acceso no es válido.");
+      }
+      if (id === request.user.id && accessRole !== "admin") {
+        throw badRequest("No puede retirar su propio acceso de administrador.");
+      }
+      if (
+        target.access_role === "admin" &&
+        target.active &&
+        accessRole !== "admin" &&
+        (await repository.countActiveAdmins()) <= 1
+      ) {
+        throw badRequest("Debe existir al menos un administrador activo.");
+      }
+      const input = {
+        username: validateUsername(request.body?.username),
+        fullName: cleanText(request.body?.fullName, 160),
+        accessRole,
+        organizationalRole:
+          accessRole === "activist" && !target.activist_id
+            ? "Activista"
+            : cleanText(request.body?.organizationalRole, 120),
+      };
+      if (!input.fullName) {
+        throw badRequest("El nombre del usuario es obligatorio.");
+      }
+      if (!input.organizationalRole) {
+        throw badRequest("Seleccione un rol organizativo.");
+      }
+      await repository.updateUser(id, input, request.user.id);
+      await repository.audit(
+        request.user.id,
+        "update_access",
+        "user",
+        id,
+        {
+          accessRole: input.accessRole,
+          organizationalRole: input.organizationalRole,
+        },
+        request
+      );
+      const updated = await repository.findUserById(id);
+      response.json({ user: repository.publicUser(updated) });
     })
   );
 

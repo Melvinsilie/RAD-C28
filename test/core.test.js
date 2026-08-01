@@ -32,9 +32,12 @@ test("el cifrado de campos no conserva texto plano y puede descifrarse", () => {
   assert.notEqual(fields.encrypt("valor"), fields.encrypt("valor"));
 });
 
-test("la contraseña exige longitud y complejidad", () => {
-  assert.throws(() => validatePassword("Aa1!b"), /6 caracteres/);
-  assert.equal(validatePassword("Aa1!bc"), "Aa1!bc");
+test("la contraseña reduce fricción sin aceptar claves triviales", () => {
+  assert.throws(() => validatePassword("a1b2c3d"), /8 y 128 caracteres/);
+  assert.throws(() => validatePassword("sololetras"), /letra y un numero/);
+  assert.throws(() => validatePassword("12345678"), /letra y un numero/);
+  assert.equal(validatePassword("activista2026"), "activista2026");
+  assert.equal(validatePassword("Carolina28"), "Carolina28");
 });
 
 test("el usuario se normaliza y rechaza caracteres no permitidos", () => {
@@ -455,17 +458,29 @@ test("el ranking ofrece una vista administrativa de alcance por red", () => {
   assert.match(css, /\.network-reach-table\s+table\s*\{[^}]*min-width:\s*1120px/s);
 });
 
-test("la vista local permite autorregistros repetidos y producción conserva el límite", () => {
+test("los límites solo cuentan fallos y no bloquean registros legítimos compartidos", () => {
   const server = fs.readFileSync(
     path.join(__dirname, "..", "src", "app.js"),
     "utf8"
   );
   assert.match(
     server,
-    /const registrationLimiter = rateLimit\(\{[\s\S]*?skip:\s*\(\) => config\.env !== "production"/
+    /const registrationLimiter = rateLimit\(\{[\s\S]*?limit:\s*60[\s\S]*?skipSuccessfulRequests:\s*true/
   );
   assert.match(
     server,
-    /message:\s*\{\s*error:\s*"Se alcanzo el limite temporal de registros desde esta conexion\."\s*\}/
+    /const loginLimiter = rateLimit\(\{[\s\S]*?limit:\s*60[\s\S]*?skipSuccessfulRequests:\s*true/
   );
+  assert.match(server, /Espere 15 minutos o solicite ayuda a un operador/);
+});
+
+test("la interfaz explica perfiles y permite editar accesos", () => {
+  const publicRoot = path.join(__dirname, "..", "public");
+  const html = fs.readFileSync(path.join(publicRoot, "index.html"), "utf8");
+  const javascript = fs.readFileSync(path.join(publicRoot, "app.js"), "utf8");
+  assert.match(html, /Activista:<\/strong> completa y edita únicamente su propio perfil/);
+  assert.match(html, /Operador:<\/strong> puede registrar, editar y apoyar activistas/);
+  assert.match(html, /id="editUserDialog"/);
+  assert.match(javascript, /data-edit-user/);
+  assert.match(javascript, /method:\s*"PATCH"/);
 });
