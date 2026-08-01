@@ -481,6 +481,8 @@ test("la interfaz explica perfiles y permite editar accesos", () => {
   assert.match(html, /Activista:<\/strong> completa y edita únicamente su propio perfil/);
   assert.match(html, /Operador:<\/strong> puede registrar, editar y apoyar activistas/);
   assert.match(html, /id="editUserDialog"/);
+  assert.match(html, /id="editUserActivistLink"/);
   assert.match(javascript, /data-edit-user/);
+  assert.match(javascript, /nodes\.editUserActivistLink\.value/);
   assert.match(javascript, /method:\s*"PATCH"/);
 });

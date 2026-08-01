@@ -642,10 +642,41 @@ function createPreviewRepository({ passwordHash }) {
           status: 409,
         });
       }
+      let selectedRecord = null;
+      if (input.activistId) {
+        selectedRecord = records.find(
+          (item) => item.id === input.activistId
+        );
+        if (!selectedRecord) {
+          throw Object.assign(new Error("La ficha de activista no existe."), {
+            status: 404,
+          });
+        }
+        if (selectedRecord.userId && selectedRecord.userId !== id) {
+          throw Object.assign(
+            new Error("La ficha seleccionada ya está vinculada a otra cuenta."),
+            { status: 409 }
+          );
+        }
+        const currentRecord = records.find((item) => item.userId === id);
+        if (currentRecord && currentRecord.id !== input.activistId) {
+          throw Object.assign(
+            new Error("La cuenta ya está vinculada a otra ficha de activista."),
+            { status: 409 }
+          );
+        }
+      }
       user.username = input.username;
       user.full_name = input.fullName;
       user.access_role = input.accessRole;
       user.organizational_role = input.organizationalRole;
+      if (selectedRecord) {
+        selectedRecord.userId = id;
+        user.activist_id = selectedRecord.id;
+        user.activist_territory_scope = selectedRecord.territoryScope;
+        user.activist_province = selectedRecord.province || null;
+        user.activist_exterior_section = selectedRecord.exteriorSection || null;
+      }
       const record = records.find((item) => item.userId === id);
       if (record) {
         record.role = input.organizationalRole;
@@ -659,6 +690,10 @@ function createPreviewRepository({ passwordHash }) {
             full_name: user.full_name,
             access_role: user.access_role,
             organizational_role: user.organizational_role,
+            activist_id: user.activist_id,
+            activist_territory_scope: user.activist_territory_scope,
+            activist_province: user.activist_province,
+            activist_exterior_section: user.activist_exterior_section,
           });
         }
       });

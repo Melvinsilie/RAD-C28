@@ -166,6 +166,8 @@ const nodes = Object.fromEntries(
     "editUserFullName",
     "editUsername",
     "editUserAccessRole",
+    "editUserActivistLinkField",
+    "editUserActivistLink",
     "editUserOrganizationalRole",
     "editUserAccessHelp",
     "editUserMessage",
@@ -302,6 +304,7 @@ function attachEvents() {
   nodes.cancelResetPasswordBtn.addEventListener("click", () => nodes.resetPasswordDialog.close());
   nodes.editUserForm.addEventListener("submit", handleEditUser);
   nodes.editUserAccessRole.addEventListener("change", syncEditUserAccessRole);
+  nodes.editUserActivistLink.addEventListener("change", syncEditUserAccessRole);
   nodes.cancelEditUserBtn.addEventListener("click", () => nodes.editUserDialog.close());
   nodes.changePasswordBtn.addEventListener("click", () => openPasswordDialog(false));
   nodes.logoutBtn.addEventListener("click", handleLogout);
@@ -2153,6 +2156,31 @@ function openEditUser(id) {
   nodes.editUsername.value = user.username;
   nodes.editUserAccessRole.value = user.accessRole;
   nodes.editUserAccessRole.disabled = user.id === state.currentUser?.id;
+  const availableRecords = state.records.filter(
+    (record) => !record.userId || record.userId === user.id
+  );
+  nodes.editUserActivistLink.innerHTML = [
+    '<option value="">La persona completará su perfil al ingresar</option>',
+    ...availableRecords.map(
+      (record) =>
+        `<option value="${escapeAttribute(record.id)}">${escapeHtml(
+          `${record.firstName} ${record.lastName} · ${record.cedula} · ${territoryName(record) || "Sin territorio"}`
+        )}</option>`
+    ),
+  ].join("");
+  if (user.activistId) {
+    nodes.editUserActivistLink.value = user.activistId;
+  } else {
+    const matchingRecords = availableRecords.filter(
+      (record) =>
+        !record.userId &&
+        normalizeSearchValue(`${record.firstName} ${record.lastName}`).trim() ===
+          normalizeSearchValue(user.fullName).trim()
+    );
+    if (matchingRecords.length === 1) {
+      nodes.editUserActivistLink.value = matchingRecords[0].id;
+    }
+  }
   populateSelect(
     nodes.editUserOrganizationalRole,
     state.catalogs.organizationalRoles
@@ -2166,14 +2194,21 @@ function openEditUser(id) {
 
 function syncEditUserAccessRole() {
   const hasActivist = nodes.editUserHasActivist.value === "1";
-  const pendingActivist =
+  const selectedActivist = Boolean(nodes.editUserActivistLink.value);
+  const canLinkActivist =
     nodes.editUserAccessRole.value === "activist" && !hasActivist;
+  nodes.editUserActivistLinkField.classList.toggle("hidden", !canLinkActivist);
+  const pendingActivist =
+    canLinkActivist && !selectedActivist;
   if (pendingActivist) nodes.editUserOrganizationalRole.value = "Activista";
   nodes.editUserOrganizationalRole.disabled = pendingActivist;
   nodes.editUserAccessHelp.textContent = accessProfileHelp(
     nodes.editUserAccessRole.value,
-    hasActivist
+    hasActivist || selectedActivist
   ) +
+    (selectedActivist && canLinkActivist
+      ? " La cuenta quedará vinculada a la ficha existente seleccionada."
+      : "") +
     (nodes.editUserId.value === state.currentUser?.id
       ? " Por seguridad, no puede retirar su propio acceso de administrador."
       : "");
@@ -2190,6 +2225,11 @@ async function handleEditUser(event) {
         fullName: nodes.editUserFullName.value,
         username: nodes.editUsername.value,
         accessRole: nodes.editUserAccessRole.value,
+        activistId:
+          nodes.editUserAccessRole.value === "activist" &&
+          nodes.editUserHasActivist.value !== "1"
+            ? nodes.editUserActivistLink.value
+            : "",
         organizationalRole: nodes.editUserOrganizationalRole.value,
       },
     });

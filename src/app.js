@@ -528,6 +528,12 @@ function createApp({ repository, config }) {
       if (!["admin", "operator", "activist"].includes(accessRole)) {
         throw badRequest("El perfil de acceso no es válido.");
       }
+      const activistId = cleanText(request.body?.activistId, 36);
+      if (activistId && accessRole !== "activist") {
+        throw badRequest(
+          "Solo una cuenta con perfil Activista puede vincularse a una ficha personal."
+        );
+      }
       if (id === request.user.id && accessRole !== "admin") {
         throw badRequest("No puede retirar su propio acceso de administrador.");
       }
@@ -543,8 +549,11 @@ function createApp({ repository, config }) {
         username: validateUsername(request.body?.username),
         fullName: cleanText(request.body?.fullName, 160),
         accessRole,
+        activistId,
         organizationalRole:
-          accessRole === "activist" && !target.activist_id
+          accessRole === "activist" &&
+          !target.activist_id &&
+          !activistId
             ? "Activista"
             : cleanText(request.body?.organizationalRole, 120),
       };
@@ -563,6 +572,7 @@ function createApp({ repository, config }) {
         {
           accessRole: input.accessRole,
           organizationalRole: input.organizationalRole,
+          linkedActivist: Boolean(input.activistId),
         },
         request
       );
