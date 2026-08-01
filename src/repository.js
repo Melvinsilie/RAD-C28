@@ -88,6 +88,7 @@ function createRepository(pool, fields) {
   function mapActivist(row, networksByActivist, skillsByActivist) {
     return {
       id: row.id,
+      userId: row.user_id || null,
       cedula: fields.decrypt(row.cedula_encrypted),
       firstName: row.first_name,
       lastName: row.last_name,
@@ -881,6 +882,42 @@ function createRepository(pool, fields) {
       );
       if (!result.affectedRows) {
         throw Object.assign(new Error("Usuario no encontrado."), { status: 404 });
+      }
+      if (input.activistId) {
+        const [profileRows] = await connection.query(
+          "SELECT id, user_id FROM activists WHERE id=? FOR UPDATE",
+          [input.activistId]
+        );
+        if (!profileRows.length) {
+          throw Object.assign(new Error("La ficha de activista no existe."), {
+            status: 404,
+          });
+        }
+        if (profileRows[0].user_id && profileRows[0].user_id !== id) {
+          throw Object.assign(
+            new Error("La ficha seleccionada ya está vinculada a otra cuenta."),
+            { status: 409 }
+          );
+        }
+        const [currentProfiles] = await connection.query(
+          "SELECT id FROM activists WHERE user_id=? FOR UPDATE",
+          [id]
+        );
+        if (
+          currentProfiles.length &&
+          currentProfiles[0].id !== input.activistId
+        ) {
+          throw Object.assign(
+            new Error("La cuenta ya está vinculada a otra ficha de activista."),
+            { status: 409 }
+          );
+        }
+        await connection.execute(
+          `UPDATE activists
+           SET user_id=?, organizational_role_id=?, updated_by=?
+           WHERE id=?`,
+          [id, organizationalRoleId, actorId, input.activistId]
+        );
       }
       await connection.execute(
         `UPDATE activists

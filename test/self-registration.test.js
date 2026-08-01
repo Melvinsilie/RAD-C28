@@ -86,6 +86,7 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
     }),
   });
   assert.equal(operatorCreatedActivist.status, 201);
+  const operatorCreatedActivistData = await operatorCreatedActivist.json();
 
   const operatorAsActivist = await fetch(`${base}/api/users/${operatorId}`, {
     method: "PATCH",
@@ -124,6 +125,52 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(
     restoredOperatorData.user.organizationalRole,
     "Coordinador municipal"
+  );
+
+  const linkedOperatorAsActivist = await fetch(
+    `${base}/api/users/${operatorId}`,
+    {
+      method: "PATCH",
+      headers: { ...headers, cookie: adminCookie },
+      body: JSON.stringify({
+        username: "operador.grupo",
+        fullName: "Operador de grupo",
+        accessRole: "activist",
+        activistId: operatorCreatedActivistData.id,
+        organizationalRole: "Coordinador municipal",
+      }),
+    }
+  );
+  assert.equal(linkedOperatorAsActivist.status, 200);
+  const linkedOperatorAsActivistData = await linkedOperatorAsActivist.json();
+  assert.equal(
+    linkedOperatorAsActivistData.user.activistId,
+    operatorCreatedActivistData.id
+  );
+
+  const linkedOperatorState = await fetch(`${base}/api/state`, {
+    headers: { cookie: operatorCookie, "x-radc28-request": "1" },
+  });
+  assert.equal(linkedOperatorState.status, 200);
+  const linkedOperatorStateData = await linkedOperatorState.json();
+  assert.equal(linkedOperatorStateData.viewMode, "territory");
+  assert.equal(linkedOperatorStateData.ownRecord.id, operatorCreatedActivistData.id);
+  assert.equal(linkedOperatorStateData.ownRecord.firstName, "Registro");
+
+  const linkedOperatorRestored = await fetch(`${base}/api/users/${operatorId}`, {
+    method: "PATCH",
+    headers: { ...headers, cookie: adminCookie },
+    body: JSON.stringify({
+      username: "operador.grupo",
+      fullName: "Operador de grupo",
+      accessRole: "operator",
+      organizationalRole: "Coordinador municipal",
+    }),
+  });
+  assert.equal(linkedOperatorRestored.status, 200);
+  assert.equal(
+    (await linkedOperatorRestored.json()).user.activistId,
+    operatorCreatedActivistData.id
   );
 
   const currentOperator = await (
