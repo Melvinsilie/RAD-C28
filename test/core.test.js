@@ -273,6 +273,74 @@ test("los roles territoriales alimentan automáticamente la estructura", () => {
   });
 });
 
+test("las designaciones centrales se propagan por región y macroregión", () => {
+  const structure = applyRoleAssignments({
+    provincePlans: [
+      {
+        province: "Azua",
+        region: "Valdesia",
+        macroRegion: "Suroeste",
+        provincialCoordinator: "",
+        regionalCoordinator: "",
+        macroCoordinator: "",
+      },
+      {
+        province: "San Cristóbal",
+        region: "Valdesia",
+        macroRegion: "Suroeste",
+        provincialCoordinator: "",
+        regionalCoordinator: "",
+        macroCoordinator: "",
+      },
+      {
+        province: "Duarte",
+        region: "Cibao Nordeste",
+        macroRegion: "Norte",
+        provincialCoordinator: "",
+        regionalCoordinator: "",
+        macroCoordinator: "",
+      },
+    ],
+    exteriorPlans: [],
+    municipalityCoordinators: [],
+    records: [
+      {
+        id: "macro",
+        firstName: "Rosa",
+        lastName: "Nacional",
+        role: "Activista",
+        territoryScope: "provincia",
+        province: "Santiago",
+        region: "Cibao Norte",
+        macroRegion: "Norte",
+      },
+      {
+        id: "region",
+        firstName: "Pedro",
+        lastName: "Valdesia",
+        role: "Activista",
+        territoryScope: "provincia",
+        province: "Duarte",
+        region: "Cibao Nordeste",
+        macroRegion: "Norte",
+      },
+    ],
+    territorialCoordination: [
+      { scope: "macroregion", territory: "Suroeste", activistId: "macro" },
+      { scope: "region", territory: "Valdesia", activistId: "region" },
+    ],
+  });
+
+  structure.provincePlans.slice(0, 2).forEach((plan) => {
+    assert.equal(plan.macroCoordinator, "Rosa Nacional");
+    assert.equal(plan.macroCoordinatorActivistId, "macro");
+    assert.equal(plan.regionalCoordinator, "Pedro Valdesia");
+    assert.equal(plan.regionalCoordinatorActivistId, "region");
+  });
+  assert.equal(structure.provincePlans[2].macroCoordinator, "");
+  assert.equal(structure.provincePlans[2].regionalCoordinator, "");
+});
+
 test("el separador de migraciones conserva sentencias individuales", () => {
   assert.deepEqual(splitStatements("CREATE TABLE a (id INT);\nINSERT INTO a VALUES (1);\n"), [
     "CREATE TABLE a (id INT)",
@@ -485,4 +553,27 @@ test("la interfaz explica perfiles y permite editar accesos", () => {
   assert.match(javascript, /data-edit-user/);
   assert.match(javascript, /nodes\.editUserActivistLink\.value/);
   assert.match(javascript, /method:\s*"PATCH"/);
+});
+
+test("la estructura permite designar responsables regionales y macroregionales", () => {
+  const publicRoot = path.join(__dirname, "..", "public");
+  const javascript = fs.readFileSync(path.join(publicRoot, "app.js"), "utf8");
+  const migration = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "db",
+      "migrations",
+      "008_territorial_coordination_assignments.sql"
+    ),
+    "utf8"
+  );
+  assert.match(javascript, /Encargados de macroregiones y regiones/);
+  assert.match(javascript, /\/api\/coordination\/territorial/);
+  assert.match(javascript, /data-territorial-scope/);
+  assert.doesNotMatch(
+    javascript,
+    /<details class="planner-group"[^>]*\bopen\b/
+  );
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS territorial_coordination_assignments/);
 });

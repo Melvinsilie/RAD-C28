@@ -150,6 +150,7 @@ function createPreviewRepository({ passwordHash }) {
     whatsappGroupUrl: "",
   }));
   const municipalityCoordinators = [];
+  const territorialCoordination = [];
   const nationalCoordination = Object.fromEntries(
     NATIONAL_ASSIGNMENT_KEYS.map((key) => [
       key,
@@ -194,6 +195,32 @@ function createPreviewRepository({ passwordHash }) {
         ];
       })
     );
+  }
+
+  function currentTerritorialCoordination() {
+    return territorialCoordination
+      .map((assignment) => {
+        const record = records.find(
+          (item) => item.id === assignment.activistId
+        );
+        if (!record) return null;
+        return {
+          ...assignment,
+          fullName: `${record.firstName} ${record.lastName}`.trim(),
+          organizationalRole:
+            assignment.scope === "macroregion"
+              ? "Coordinador macroregional"
+              : "Coordinador regional",
+          phone: record.phone,
+          whatsapp: record.whatsapp,
+          email: record.email,
+          homeTerritory:
+            record.territoryScope === "exterior"
+              ? record.exteriorSection
+              : record.province,
+        };
+      })
+      .filter(Boolean);
   }
 
   const publicUser = (row) => ({
@@ -266,9 +293,11 @@ function createPreviewRepository({ passwordHash }) {
         exteriorPlans,
         municipalityCoordinators,
         records,
+        territorialCoordination: currentTerritorialCoordination(),
       });
       const snapshot = {
         nationalCoordination: currentNationalCoordination(),
+        territorialCoordination: currentTerritorialCoordination(),
         nationalReach: buildNationalReach(records),
         provinceNetworkReach: buildProvinceNetworkReach(
           effectiveStructure.provincePlans,
@@ -289,6 +318,7 @@ function createPreviewRepository({ passwordHash }) {
       if (!ownRecord) {
         return structuredClone({
           nationalCoordination: snapshot.nationalCoordination,
+          territorialCoordination: [],
           nationalReach: snapshot.nationalReach,
           provincePlans: snapshot.provincePlans.map((plan) => ({
             ...plan,
@@ -353,6 +383,7 @@ function createPreviewRepository({ passwordHash }) {
       });
       return structuredClone({
         nationalCoordination: snapshot.nationalCoordination,
+        territorialCoordination: [],
         nationalReach: snapshot.nationalReach,
         provincePlans: visibleProvincePlans,
         exteriorPlans:
@@ -462,6 +493,25 @@ function createPreviewRepository({ passwordHash }) {
     async deleteActivist(id) {
       const index = records.findIndex((record) => record.id === id);
       if (index < 0) throw Object.assign(new Error("Registro no encontrado."), { status: 404 });
+      const removedAssignments = territorialCoordination.filter(
+        (assignment) => assignment.activistId === id
+      );
+      removedAssignments.forEach((assignment) => {
+        provincePlans.forEach((plan) => {
+          const matches =
+            assignment.scope === "macroregion"
+              ? plan.macroRegion === assignment.territory
+              : plan.region === assignment.territory;
+          if (!matches) return;
+          if (assignment.scope === "macroregion") plan.macroCoordinator = "";
+          else plan.regionalCoordinator = "";
+        });
+      });
+      for (let assignmentIndex = territorialCoordination.length - 1; assignmentIndex >= 0; assignmentIndex -= 1) {
+        if (territorialCoordination[assignmentIndex].activistId === id) {
+          territorialCoordination.splice(assignmentIndex, 1);
+        }
+      }
       records.splice(index, 1);
     },
     async updateProvince(province, payload) {
@@ -494,6 +544,20 @@ function createPreviewRepository({ passwordHash }) {
       if (new Set(requestedIds).size !== requestedIds.length) {
         throw Object.assign(
           new Error("Una persona solo puede ocupar un cargo nacional a la vez."),
+          { status: 400 }
+        );
+      }
+      if (
+        requestedIds.some((id) =>
+          territorialCoordination.some(
+            (assignment) => assignment.activistId === id
+          )
+        )
+      ) {
+        throw Object.assign(
+          new Error(
+            "Una persona con coordinación territorial no puede ocupar simultáneamente un cargo nacional."
+          ),
           { status: 400 }
         );
       }
@@ -557,6 +621,105 @@ function createPreviewRepository({ passwordHash }) {
             ) {
               user.organizational_role = "Activista";
             }
+          }
+        });
+    },
+    async updateTerritorialCoordination(assignments) {
+      const selectedIds = assignments.map((assignment) => assignment.activistId);
+      if (new Set(selectedIds).size !== selectedIds.length) {
+        throw Object.assign(
+          new Error("Una persona solo puede coordinar una región o macroregión a la vez."),
+          { status: 400 }
+        );
+      }
+      const nationalIds = new Set(
+        NATIONAL_ASSIGNMENT_KEYS.map(
+          (key) => nationalCoordination[key]?.activistId
+        ).filter(Boolean)
+      );
+      if (selectedIds.some((id) => nationalIds.has(id))) {
+        throw Object.assign(
+          new Error(
+            "Una persona con cargo nacional no puede ocupar simultáneamente una coordinación territorial."
+          ),
+          { status: 400 }
+        );
+      }
+      const allowedMacroregions = new Set(
+        provincePlans.map((plan) => plan.macroRegion)
+      );
+      const allowedRegions = new Set(provincePlans.map((plan) => plan.region));
+      const keys = assignments.map(
+        (assignment) => `${assignment.scope}\u0000${assignment.territory}`
+      );
+      if (
+        new Set(keys).size !== keys.length ||
+        assignments.some(
+          (assignment) =>
+            !["macroregion", "region"].includes(assignment.scope) ||
+            !(assignment.scope === "macroregion"
+              ? allowedMacroregions
+              : allowedRegions
+            ).has(assignment.territory) ||
+            !records.some((record) => record.id === assignment.activistId)
+        )
+      ) {
+        throw Object.assign(
+          new Error("Una de las designaciones territoriales no es válida."),
+          { status: 400 }
+        );
+      }
+
+      const previousIds = territorialCoordination.map(
+        (assignment) => assignment.activistId
+      );
+      territorialCoordination.splice(
+        0,
+        territorialCoordination.length,
+        ...assignments.map((assignment) => ({ ...assignment }))
+      );
+      provincePlans.forEach((plan) => {
+        plan.regionalCoordinator = "";
+        plan.macroCoordinator = "";
+      });
+      assignments.forEach((assignment) => {
+        const record = records.find(
+          (item) => item.id === assignment.activistId
+        );
+        const fullName = `${record.firstName} ${record.lastName}`.trim();
+        const role =
+          assignment.scope === "macroregion"
+            ? "Coordinador macroregional"
+            : "Coordinador regional";
+        record.role = role;
+        const user = users.find((item) => item.id === record.userId);
+        if (user) user.organizational_role = role;
+        provincePlans.forEach((plan) => {
+          const matches =
+            assignment.scope === "macroregion"
+              ? plan.macroRegion === assignment.territory
+              : plan.region === assignment.territory;
+          if (!matches) return;
+          if (assignment.scope === "macroregion") {
+            plan.macroCoordinator = fullName;
+          } else {
+            plan.regionalCoordinator = fullName;
+          }
+        });
+      });
+      previousIds
+        .filter((id) => !selectedIds.includes(id))
+        .forEach((id) => {
+          const record = records.find((item) => item.id === id);
+          if (
+            record &&
+            ["Coordinador regional", "Coordinador macroregional"].includes(
+              record.role
+            )
+          ) {
+            record.role = "Activista";
+            const user = users.find((item) => item.id === record.userId);
+            if (user) user.organizational_role = "Activista";
           }
         });
     },

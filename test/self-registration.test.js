@@ -451,6 +451,67 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(otherRegistration.status, 201);
   const otherRegistrationData = await otherRegistration.json();
 
+  const territorialAssignment = await fetch(
+    `${base}/api/coordination/territorial`,
+    {
+      method: "PUT",
+      headers: { ...headers, cookie: adminCookie },
+      body: JSON.stringify({
+        assignments: [
+          {
+            scope: "macroregion",
+            territory: "Norte",
+            activistId: operatorCreatedActivistData.id,
+          },
+          {
+            scope: "region",
+            territory: "Enriquillo",
+            activistId: assistedProfileData.user.activistId,
+          },
+        ],
+      }),
+    }
+  );
+  assert.equal(territorialAssignment.status, 200);
+  const stateWithTerritorialCoordination = await (
+    await fetch(`${base}/api/state`, {
+      headers: { cookie: adminCookie, "x-radc28-request": "1" },
+    })
+  ).json();
+  assert.equal(stateWithTerritorialCoordination.territorialCoordination.length, 2);
+  assert.equal(
+    stateWithTerritorialCoordination.provincePlans.find(
+      (plan) => plan.province === "Duarte"
+    ).macroCoordinator,
+    "Registro Asistido"
+  );
+  assert.equal(
+    stateWithTerritorialCoordination.provincePlans.find(
+      (plan) => plan.province === "Barahona"
+    ).regionalCoordinator,
+    "Activista Asistida"
+  );
+
+  const forbiddenOperatorTerritorialAssignment = await fetch(
+    `${base}/api/coordination/territorial`,
+    {
+      method: "PUT",
+      headers: { ...headers, cookie: operatorCookie },
+      body: JSON.stringify({ assignments: [] }),
+    }
+  );
+  assert.equal(forbiddenOperatorTerritorialAssignment.status, 403);
+
+  const clearTerritorialAssignment = await fetch(
+    `${base}/api/coordination/territorial`,
+    {
+      method: "PUT",
+      headers: { ...headers, cookie: adminCookie },
+      body: JSON.stringify({ assignments: [] }),
+    }
+  );
+  assert.equal(clearTerritorialAssignment.status, 200);
+
   const nationalAssignment = await fetch(`${base}/api/coordination`, {
     method: "PUT",
     headers: { ...headers, cookie: adminCookie },
@@ -474,6 +535,23 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
     }),
   });
   assert.equal(nationalAssignment.status, 200);
+  const conflictingTerritorialAssignment = await fetch(
+    `${base}/api/coordination/territorial`,
+    {
+      method: "PUT",
+      headers: { ...headers, cookie: adminCookie },
+      body: JSON.stringify({
+        assignments: [
+          {
+            scope: "macroregion",
+            territory: "Norte",
+            activistId: otherRegistrationData.user.activistId,
+          },
+        ],
+      }),
+    }
+  );
+  assert.equal(conflictingTerritorialAssignment.status, 400);
   const adminStateAfterAssignment = await (
     await fetch(`${base}/api/state`, {
       headers: { cookie: adminCookie, "x-radc28-request": "1" },
@@ -532,6 +610,7 @@ test("el activista compara el mapa nacional sin acceder a directorios ajenos", a
   assert.equal(stateResponse.status, 200);
   const state = await stateResponse.json();
   assert.equal(state.viewMode, "territory");
+  assert.deepEqual(state.territorialCoordination, []);
   assert.equal(state.nationalReach, 1250);
   assert.equal(state.provinceNetworkReach, undefined);
   assert.equal(state.provincePlans.length, 32);

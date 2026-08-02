@@ -27,6 +27,7 @@ function applyRoleAssignments({
   exteriorPlans,
   municipalityCoordinators,
   records,
+  territorialCoordination = [],
 }) {
   const provinces = provincePlans.map((plan) => ({ ...plan }));
   const exterior = exteriorPlans.map((plan) => ({ ...plan }));
@@ -35,6 +36,9 @@ function applyRoleAssignments({
       `${assignment.province}\u0000${assignment.municipality}`,
       { ...assignment },
     ])
+  );
+  const explicitlyAssignedIds = new Set(
+    territorialCoordination.map((assignment) => assignment.activistId)
   );
 
   [...records].reverse().forEach((record) => {
@@ -57,7 +61,7 @@ function applyRoleAssignments({
     }
 
     const field = TERRITORIAL_ROLE_FIELDS.get(record.role);
-    if (!field) return;
+    if (!field || explicitlyAssignedIds.has(record.id)) return;
     const isExterior = record.territoryScope === "exterior";
     const plans = isExterior ? exterior : provinces;
     plans.forEach((plan) => {
@@ -65,6 +69,23 @@ function applyRoleAssignments({
         plan[field] = coordinatorName;
         plan[`${field}ActivistId`] = record.id;
       }
+    });
+  });
+
+  const recordsById = new Map(records.map((record) => [record.id, record]));
+  territorialCoordination.forEach((assignment) => {
+    const record = recordsById.get(assignment.activistId);
+    const coordinatorName = record ? fullName(record) : "";
+    if (!coordinatorName) return;
+    const isMacroregion = assignment.scope === "macroregion";
+    const field = isMacroregion ? "macroCoordinator" : "regionalCoordinator";
+    provinces.forEach((plan) => {
+      const matches = isMacroregion
+        ? plan.macroRegion === assignment.territory
+        : plan.region === assignment.territory;
+      if (!matches) return;
+      plan[field] = coordinatorName;
+      plan[`${field}ActivistId`] = record.id;
     });
   });
 
