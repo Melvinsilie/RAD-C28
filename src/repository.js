@@ -160,6 +160,33 @@ function createRepository(pool, fields) {
     );
   }
 
+  function mapTerritorialCoordination(assignments, records) {
+    const recordsById = new Map(records.map((record) => [record.id, record]));
+    return assignments
+      .map((assignment) => {
+        const record = recordsById.get(assignment.activist_id);
+        if (!record) return null;
+        return {
+          scope: assignment.scope_name,
+          territory: assignment.territory_name,
+          activistId: record.id,
+          fullName: `${record.firstName} ${record.lastName}`.trim(),
+          organizationalRole:
+            assignment.scope_name === "macroregion"
+              ? "Coordinador macroregional"
+              : "Coordinador regional",
+          phone: record.phone,
+          whatsapp: record.whatsapp,
+          email: record.email,
+          homeTerritory:
+            record.territoryScope === "exterior"
+              ? record.exteriorSection
+              : record.province,
+        };
+      })
+      .filter(Boolean);
+  }
+
   async function roleId(connection, name) {
     const [rows] = await connection.query(
       "SELECT id FROM organizational_roles WHERE name = ? LIMIT 1",
@@ -174,6 +201,7 @@ function createRepository(pool, fields) {
       [provinceRows],
       [exteriorRows],
       [coordinationRows],
+      [territorialCoordinationRows],
       [municipalityCoordinatorRows],
       [activistRows],
       [networkRows],
@@ -184,6 +212,11 @@ function createRepository(pool, fields) {
       pool.query("SELECT * FROM province_plans ORDER BY province"),
       pool.query("SELECT * FROM exterior_plans ORDER BY seccional"),
       pool.query("SELECT * FROM national_coordination WHERE singleton_id = 1"),
+      pool.query(`
+        SELECT scope_name, territory_name, activist_id
+        FROM territorial_coordination_assignments
+        ORDER BY scope_name, territory_name
+      `),
       pool.query(`
         SELECT province, municipality, coordinator_name
         FROM municipality_coordinators
@@ -235,14 +268,20 @@ function createRepository(pool, fields) {
         coordinatorName: row.coordinator_name,
       })
     );
+    const mappedTerritorialCoordination = mapTerritorialCoordination(
+      territorialCoordinationRows,
+      mappedRecords
+    );
     const effectiveStructure = applyRoleAssignments({
       provincePlans: mappedProvincePlans,
       exteriorPlans: mappedExteriorPlans,
       municipalityCoordinators: mappedMunicipalityCoordinators,
       records: mappedRecords,
+      territorialCoordination: mappedTerritorialCoordination,
     });
     const snapshot = {
       nationalCoordination: mapNationalCoordination(coordination, mappedRecords),
+      territorialCoordination: mappedTerritorialCoordination,
       nationalReach: buildNationalReach(mappedRecords),
       provinceNetworkReach: buildProvinceNetworkReach(
         effectiveStructure.provincePlans,
@@ -265,6 +304,7 @@ function createRepository(pool, fields) {
     if (!ownRow) {
       return {
         nationalCoordination: snapshot.nationalCoordination,
+        territorialCoordination: [],
         nationalReach: snapshot.nationalReach,
         provincePlans: snapshot.provincePlans.map((plan) => ({
           ...plan,
@@ -373,6 +413,7 @@ function createRepository(pool, fields) {
 
     return {
       nationalCoordination: snapshot.nationalCoordination,
+      territorialCoordination: [],
       nationalReach: snapshot.nationalReach,
       provincePlans,
       exteriorPlans:
@@ -592,8 +633,43 @@ function createRepository(pool, fields) {
   }
 
   async function deleteActivist(id) {
-    const [result] = await pool.query("DELETE FROM activists WHERE id = ?", [id]);
-    if (!result.affectedRows) throw Object.assign(new Error("Registro no encontrado."), { status: 404 });
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [assignments] = await connection.query(
+        `SELECT scope_name, territory_name
+         FROM territorial_coordination_assignments
+         WHERE activist_id=? FOR UPDATE`,
+        [id]
+      );
+      for (const assignment of assignments) {
+        const field =
+          assignment.scope_name === "macroregion"
+            ? "macro_coordinator"
+            : "regional_coordinator";
+        const key =
+          assignment.scope_name === "macroregion"
+            ? "macro_region"
+            : "region_name";
+        await connection.execute(
+          `UPDATE province_plans SET ${field}='' WHERE ${key}=?`,
+          [assignment.territory_name]
+        );
+      }
+      const [result] = await connection.query(
+        "DELETE FROM activists WHERE id = ?",
+        [id]
+      );
+      if (!result.affectedRows) {
+        throw Object.assign(new Error("Registro no encontrado."), { status: 404 });
+      }
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async function updateProvince(province, payload) {
@@ -677,6 +753,23 @@ function createRepository(pool, fields) {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
+      if (selectedIds.length) {
+        const placeholders = selectedIds.map(() => "?").join(",");
+        const [territorialRows] = await connection.query(
+          `SELECT activist_id
+           FROM territorial_coordination_assignments
+           WHERE activist_id IN (${placeholders})`,
+          selectedIds
+        );
+        if (territorialRows.length) {
+          throw Object.assign(
+            new Error(
+              "Una persona con coordinación territorial no puede ocupar simultáneamente un cargo nacional."
+            ),
+            { status: 400 }
+          );
+        }
+      }
       const [currentRows] = await connection.query(
         "SELECT * FROM national_coordination WHERE singleton_id=1 FOR UPDATE"
       );
@@ -776,6 +869,179 @@ function createRepository(pool, fields) {
             ...NATIONAL_ASSIGNMENTS.map(([, , assignedRole]) => assignedRole),
           ]
         );
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async function updateTerritorialCoordination(assignments, actorId) {
+    const selectedIds = assignments.map((assignment) => assignment.activistId);
+    if (new Set(selectedIds).size !== selectedIds.length) {
+      throw Object.assign(
+        new Error("Una persona solo puede coordinar una región o macroregión a la vez."),
+        { status: 400 }
+      );
+    }
+    const assignmentKeys = assignments.map(
+      (assignment) => `${assignment.scope}\u0000${assignment.territory}`
+    );
+    if (new Set(assignmentKeys).size !== assignmentKeys.length) {
+      throw Object.assign(new Error("Hay territorios repetidos en la designación."), {
+        status: 400,
+      });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [macroRows] = await connection.query(
+        "SELECT DISTINCT macro_region FROM province_plans"
+      );
+      const [regionRows] = await connection.query(
+        "SELECT DISTINCT region_name FROM province_plans"
+      );
+      const [currentRows] = await connection.query(
+        "SELECT scope_name, territory_name, activist_id FROM territorial_coordination_assignments FOR UPDATE"
+      );
+      const allowedTerritories = {
+        macroregion: new Set(macroRows.map((row) => row.macro_region)),
+        region: new Set(regionRows.map((row) => row.region_name)),
+      };
+      if (
+        assignments.some(
+          (assignment) =>
+            !allowedTerritories[assignment.scope]?.has(assignment.territory)
+        )
+      ) {
+        throw Object.assign(
+          new Error("Una de las regiones o macroregiones no existe."),
+          { status: 400 }
+        );
+      }
+
+      let recordsById = new Map();
+      if (selectedIds.length) {
+        const placeholders = selectedIds.map(() => "?").join(",");
+        const [rows] = await connection.query(
+          `SELECT id, first_name, last_name
+           FROM activists
+           WHERE id IN (${placeholders})`,
+          selectedIds
+        );
+        recordsById = new Map(rows.map((row) => [row.id, row]));
+        if (recordsById.size !== selectedIds.length) {
+          throw Object.assign(
+            new Error("Una de las personas seleccionadas ya no está disponible."),
+            { status: 400 }
+          );
+        }
+        const nationalColumns = NATIONAL_ASSIGNMENTS.map(
+          ([, column]) => `${column}_activist_id`
+        );
+        const [nationalRows] = await connection.query(
+          `SELECT ${nationalColumns.join(", ")}
+           FROM national_coordination
+           WHERE singleton_id=1`
+        );
+        const nationalIds = new Set(
+          nationalColumns
+            .map((column) => nationalRows[0]?.[column])
+            .filter(Boolean)
+        );
+        if (selectedIds.some((id) => nationalIds.has(id))) {
+          throw Object.assign(
+            new Error(
+              "Una persona con cargo nacional no puede ocupar simultáneamente una coordinación territorial."
+            ),
+            { status: 400 }
+          );
+        }
+      }
+
+      await connection.query("DELETE FROM territorial_coordination_assignments");
+      await connection.query(
+        "UPDATE province_plans SET regional_coordinator='', macro_coordinator=''"
+      );
+
+      for (const assignment of assignments) {
+        const record = recordsById.get(assignment.activistId);
+        const fullName = `${record.first_name} ${record.last_name}`.trim();
+        const assignedRole =
+          assignment.scope === "macroregion"
+            ? "Coordinador macroregional"
+            : "Coordinador regional";
+        const planField =
+          assignment.scope === "macroregion"
+            ? "macro_coordinator"
+            : "regional_coordinator";
+        const planKey =
+          assignment.scope === "macroregion" ? "macro_region" : "region_name";
+        await connection.execute(
+          `INSERT INTO territorial_coordination_assignments
+             (scope_name, territory_name, activist_id, updated_by)
+           VALUES (?, ?, ?, ?)`,
+          [
+            assignment.scope,
+            assignment.territory,
+            assignment.activistId,
+            actorId,
+          ]
+        );
+        await connection.execute(
+          `UPDATE province_plans SET ${planField}=? WHERE ${planKey}=?`,
+          [fullName, assignment.territory]
+        );
+        await connection.execute(
+          `UPDATE activists AS a
+           INNER JOIN organizational_roles AS r ON r.name=?
+           SET a.organizational_role_id=r.id
+           WHERE a.id=?`,
+          [assignedRole, assignment.activistId]
+        );
+        await connection.execute(
+          `UPDATE users AS u
+           INNER JOIN activists AS a ON a.user_id=u.id
+           INNER JOIN organizational_roles AS r ON r.name=?
+           SET u.organizational_role_id=r.id
+           WHERE a.id=?`,
+          [assignedRole, assignment.activistId]
+        );
+      }
+
+      const removedIds = [
+        ...new Set(
+          currentRows
+            .map((row) => row.activist_id)
+            .filter((id) => id && !selectedIds.includes(id))
+        ),
+      ];
+      if (removedIds.length) {
+        const placeholders = removedIds.map(() => "?").join(",");
+        for (const table of ["users", "activists"]) {
+          const join =
+            table === "users"
+              ? "INNER JOIN activists AS a ON a.user_id=users.id"
+              : "";
+          const idColumn = table === "users" ? "a.id" : "activists.id";
+          await connection.query(
+            `UPDATE ${table}
+             ${join}
+             INNER JOIN organizational_roles AS current_role
+               ON current_role.id=${table}.organizational_role_id
+             INNER JOIN organizational_roles AS default_role
+               ON default_role.name='Activista'
+             SET ${table}.organizational_role_id=default_role.id
+             WHERE ${idColumn} IN (${placeholders})
+               AND current_role.name IN ('Coordinador regional', 'Coordinador macroregional')`,
+            removedIds
+          );
+        }
       }
 
       await connection.commit();
@@ -1179,6 +1445,7 @@ function createRepository(pool, fields) {
     updateExterior,
     updateMunicipalityCoordinator,
     updateCoordination,
+    updateTerritorialCoordination,
     findUserByUsername,
     findUserById,
     listUsers,

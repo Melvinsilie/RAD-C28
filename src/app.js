@@ -421,6 +421,45 @@ function createApp({ repository, config }) {
     })
   );
 
+  app.put(
+    "/api/coordination/territorial",
+    requireAdmin,
+    asyncRoute(async (request, response) => {
+      const requestedAssignments = Array.isArray(request.body?.assignments)
+        ? request.body.assignments
+        : [];
+      if (requestedAssignments.length > 20) {
+        throw badRequest("La cantidad de designaciones territoriales no es válida.");
+      }
+      const assignments = requestedAssignments.map((assignment) => {
+        const scope = cleanText(assignment?.scope, 20);
+        const territory = cleanText(assignment?.territory, 100);
+        const activistId = cleanText(assignment?.activistId, 36);
+        if (
+          !["macroregion", "region"].includes(scope) ||
+          !territory ||
+          !activistId
+        ) {
+          throw badRequest("Una de las designaciones territoriales no es válida.");
+        }
+        return { scope, territory, activistId };
+      });
+      await repository.updateTerritorialCoordination(
+        assignments,
+        request.user.id
+      );
+      await repository.audit(
+        request.user.id,
+        "update",
+        "territorial_coordination",
+        "national",
+        { assignments: assignments.length },
+        request
+      );
+      response.json({ ok: true });
+    })
+  );
+
   app.post(
     "/api/exports/log",
     requireStaff,

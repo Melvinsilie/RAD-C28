@@ -2237,6 +2237,112 @@ form.is-busy textarea:disabled {
   line-height: 1.4;
 }
 
+.planner-territorial-card {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(15, 127, 123, 0.16);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at right top, rgba(15, 127, 123, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.64);
+}
+
+.planner-territorial-card h4,
+.planner-territorial-card p,
+.planner-territorial-section h5 {
+  margin: 0;
+}
+
+.planner-territorial-card h4 {
+  font-size: 1.18rem;
+}
+
+.planner-territorial-card p,
+.planner-territorial-field > small,
+.planner-territorial-actions > small,
+.planner-central-note {
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.planner-territorial-groups {
+  display: grid;
+  gap: 20px;
+}
+
+.planner-territorial-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.planner-territorial-section h5 {
+  color: var(--ink);
+  font-size: 0.98rem;
+  letter-spacing: 0.04em;
+}
+
+.planner-territorial-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.planner-territorial-field {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(15, 127, 123, 0.06);
+}
+
+.planner-territorial-field label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.planner-territorial-field select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.planner-territorial-field > small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-height: 2.8em;
+  margin-top: 8px;
+}
+
+.planner-territorial-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.planner-territorial-actions > small {
+  flex: 1 1 280px;
+}
+
+.planner-edit-record-light {
+  border-color: rgba(15, 127, 123, 0.2);
+  color: var(--accent-teal);
+  background: rgba(15, 127, 123, 0.08);
+}
+
+.planner-central-note {
+  display: block;
+  margin-top: -4px;
+  font-size: 0.82rem;
+}
+
 .planner-card input:disabled,
 .planner-card select:disabled {
   color: rgba(21, 31, 49, 0.76);
@@ -2751,6 +2857,7 @@ tbody td {
   .planner-goal-grid,
   .planner-coordinator-grid,
   .planner-national-grid,
+  .planner-territorial-grid,
   .planner-municipal-grid,
   .planner-macro-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2943,12 +3050,14 @@ tbody td {
     width: 100%;
   }
 
-  .planner-national-actions {
+  .planner-national-actions,
+  .planner-territorial-actions {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .planner-national-actions .button {
+  .planner-national-actions .button,
+  .planner-territorial-actions .button {
     width: 100%;
   }
 
